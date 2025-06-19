@@ -156,7 +156,7 @@ export class MessageFlowManager {
     id: string
     role: 'user' | 'assistant' | 'system' | 'tool'
     content: string
-    timestamp: Date
+    timestamp: string
   }>): EnhancedStep[] {
     return messages.map(msg => ({
       id: msg.id,
@@ -165,7 +165,7 @@ export class MessageFlowManager {
             StepType.RESPONSE,
       text: msg.content,
       status: StepStatus.COMPLETED,
-      timestamp: msg.timestamp.toISOString(),
+      timestamp: msg.timestamp,
       isIndented: msg.role === 'tool', // Tool messages are indented
       toolName: msg.role === 'tool' ? 'Tool' : undefined,
     }))

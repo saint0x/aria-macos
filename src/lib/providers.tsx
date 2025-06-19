@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import { ThemeProvider } from "next-themes"
 import { BlurProvider } from "@/lib/contexts/blur-context"
-import { GrpcProvider } from "@/lib/contexts/grpc-context"
 
 // Create a client
 const queryClient = new QueryClient({
@@ -22,9 +21,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-        <GrpcProvider>
-          <BlurProvider>{children}</BlurProvider>
-        </GrpcProvider>
+        <BlurProvider>{children}</BlurProvider>
       </ThemeProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

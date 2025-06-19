@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { SendIcon, ChevronDownIcon } from "lucide-react"
-import { useSession } from "@/lib/hooks/use-session"
+import { useTauriSession } from "@/lib/hooks/use-tauri-session"
 import { motion, AnimatePresence } from "framer-motion"
 import { DropdownMenuComponent, type MenuItem } from "./shared/dropdown-menu"
 import { AgentStatusIndicator } from "@/components/shared/agent-status-indicator"
@@ -105,7 +105,7 @@ export function GlassmorphicChatbar({
   const mainChatbarRef = useRef<HTMLDivElement>(null)
   const stepItemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  const { session, messages, executeTurn, isStreaming, error: sessionError } = useSession()
+  const { session, messages, executeTurn, isStreaming, error: sessionError } = useTauriSession()
 
   // Sync message flow manager state with component state
   useEffect(() => {
