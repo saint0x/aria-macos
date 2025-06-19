@@ -4,12 +4,13 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { SendIcon, ChevronDownIcon } from "lucide-react"
-import { useChat } from "ai/react"
+import { useSession } from "@/lib/hooks/use-session"
 import { motion, AnimatePresence } from "framer-motion"
 import { DropdownMenuComponent, type MenuItem } from "./shared/dropdown-menu"
 import { AgentStatusIndicator } from "@/components/shared/agent-status-indicator"
 import type { EnhancedStep, Task } from "@/lib/types"
 import { StepType, StepStatus } from "@/lib/types"
+import { MessageFlowManager, type MessageFlowConfig } from "@/lib/utils/message-flow"
 import { StepDetailPane } from "@/components/shared/step-detail-pane"
 import { ToolUploadSuccessDisplay } from "@/components/shared/tool-upload-success-display"
 import { TaskListView } from "./views/task-list-view"
@@ -20,8 +21,6 @@ import { SettingsView } from "./views/settings-view"
 import { gentleTransition, slideUpFadeVariants, mainChatbarContainerVariants } from "@/lib/animations"
 import { useBlur } from "@/lib/contexts/blur-context"
 import { useTasks } from "@/lib/hooks/use-tasks"
-
-const initialAiSteps: EnhancedStep[] = []
 
 interface GlassmorphicChatbarProps {
   isOpen?: boolean
@@ -45,11 +44,32 @@ export function GlassmorphicChatbar({
   const [inputValue, setInputValue] = useState(initialValue)
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false)
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
-  const [aiSteps, setAiSteps] = useState<EnhancedStep[]>(initialAiSteps)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [processingComplete, setProcessingComplete] = useState(false)
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<EnhancedStep | null>(null)
   const [showAiChatFlow, setShowAiChatFlow] = useState(false)
+  const [messageFlowManager] = useState(() => {
+    const config: MessageFlowConfig = {
+      onStepAdded: (step) => {
+        // Force re-render when steps are added
+        setShowAiChatFlow(true)
+      },
+      onHighlightChanged: (stepId) => {
+        // Scroll to highlighted step if needed
+        if (stepId && chatContainerRef.current) {
+          setTimeout(() => {
+            const element = chatContainerRef.current
+            if (element) {
+              element.scrollTo({
+                top: element.scrollHeight,
+                behavior: "smooth",
+              })
+            }
+          }, 100)
+        }
+      }
+    }
+    return new MessageFlowManager(config)
+  })
+  const [flowSteps, setFlowSteps] = useState<EnhancedStep[]>([])
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null)
 
   const { data: tasksData } = useTasks()
@@ -85,114 +105,80 @@ export function GlassmorphicChatbar({
   const mainChatbarRef = useRef<HTMLDivElement>(null)
   const stepItemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  const { handleSubmit: originalHandleSubmit } = useChat({
-    api: "/api/chat",
-    onFinish: () => {
-      if (isProcessing) {
-        setIsProcessing(false)
-        setProcessingComplete(true)
+  const { session, messages, executeTurn, isStreaming, error: sessionError } = useSession()
+
+  // Sync message flow manager state with component state
+  useEffect(() => {
+    setFlowSteps(messageFlowManager.getSteps())
+    setActiveHighlightId(messageFlowManager.getActiveHighlightId())
+  }, [messageFlowManager])
+
+  // Convert gRPC messages to flow steps when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      messageFlowManager.reset()
+      const grpcMessages = messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }))
+      const steps = messageFlowManager.convertGrpcMessagesToSteps(grpcMessages)
+      steps.forEach(step => {
+        messageFlowManager.getSteps().push(step)
+      })
+      // Highlight the last main step
+      const lastMainStep = steps.filter(s => !s.isIndented).pop()
+      if (lastMainStep) {
+        messageFlowManager.setHighlight(lastMainStep.id)
       }
-    },
-    onError: () => {
-      if (isProcessing) {
-        setIsProcessing(false)
-        setProcessingComplete(true)
-      }
-    },
-  })
+      setFlowSteps(messageFlowManager.getSteps())
+      setActiveHighlightId(messageFlowManager.getActiveHighlightId())
+    }
+  }, [messages, messageFlowManager])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (inputValue.trim() && !isProcessing) {
+    if (inputValue.trim() && !isStreaming && session) {
       setExpanded(true)
       setShowAiChatFlow(true)
 
       const userMessageContent = inputValue
-
-      const newUserMessageStep: EnhancedStep = {
-        id: `user-${Date.now()}`,
-        type: StepType.USER_MESSAGE,
-        text: userMessageContent,
-        timestamp: new Date().toISOString(),
-      }
-
-      setAiSteps((prevSteps) => [...prevSteps, newUserMessageStep])
-      setActiveHighlightId(newUserMessageStep.id)
       setInputValue("")
 
-      setTimeout(() => {
-        setIsProcessing(true)
-        setProcessingComplete(false)
+      // Add user message to flow manager immediately
+      const userStep = messageFlowManager.addUserMessage(userMessageContent)
+      setFlowSteps(messageFlowManager.getSteps())
+      setActiveHighlightId(messageFlowManager.getActiveHighlightId())
 
-        const synthesizingThought: EnhancedStep = {
-          id: `thought-synthesizing-${Date.now()}`,
-          type: StepType.THOUGHT,
-          text: "Synthesizing response...",
-          status: StepStatus.ACTIVE,
-          timestamp: new Date().toISOString(),
-        }
-        setAiSteps((prevSteps) => [...prevSteps, synthesizingThought])
-        setActiveHighlightId(synthesizingThought.id)
+      // Add a thinking step while processing
+      const thinkingStep = messageFlowManager.addThinkingStep("Processing your request...")
+      setFlowSteps(messageFlowManager.getSteps())
+      setActiveHighlightId(messageFlowManager.getActiveHighlightId())
 
-        setTimeout(() => {
-          const tool1: EnhancedStep = {
-            id: `tool-1-${Date.now()}`,
-            type: StepType.TOOL,
-            text: "Querying knowledge base...",
-            toolName: "KnowledgeRetriever",
-            status: StepStatus.ACTIVE,
-            isIndented: true,
-            timestamp: new Date().toISOString(),
-          }
-          setAiSteps((prevSteps) => [...prevSteps, tool1])
-
-          setTimeout(() => {
-            setAiSteps((prevSteps) =>
-              prevSteps.map((s) => (s.id === tool1.id ? { ...s, status: StepStatus.COMPLETED } : s)),
-            )
-
-            const tool2: EnhancedStep = {
-              id: `tool-2-${Date.now()}`,
-              type: StepType.TOOL,
-              text: "Analyzing patterns...",
-              toolName: "PatternAnalyzer",
-              status: StepStatus.ACTIVE,
-              isIndented: true,
-              timestamp: new Date().toISOString(),
-            }
-            setAiSteps((prevSteps) => [...prevSteps, tool2])
-
-            setTimeout(async () => {
-              setAiSteps((prevSteps) =>
-                prevSteps.map((s) => (s.id === tool2.id ? { ...s, status: StepStatus.COMPLETED } : s)),
-              )
-              setAiSteps((prevSteps) =>
-                prevSteps.map((s) => (s.id === synthesizingThought.id ? { ...s, status: StepStatus.COMPLETED } : s)),
-              )
-
-              const aiResponseStep: EnhancedStep = {
-                id: `response-${Date.now()}`,
-                type: StepType.RESPONSE,
-                text: "Based on my analysis, here's the simulated finding: The data indicates a strong correlation.",
-                status: StepStatus.COMPLETED,
-                timestamp: new Date().toISOString(),
-              }
-              setAiSteps((prevSteps) => [...prevSteps, aiResponseStep])
-              setActiveHighlightId(aiResponseStep.id)
-
-              setIsProcessing(false)
-              setProcessingComplete(true)
-              // TODO: In a real scenario, you might call the actual API here
-              // originalHandleSubmit(e, { data: { message: userMessageContent } });
-            }, 1200)
-          }, 1200)
-        }, 800)
-      }, 100)
+      try {
+        // Execute the actual gRPC turn
+        await executeTurn(userMessageContent)
+        
+        // Complete the thinking step
+        messageFlowManager.completeStep(thinkingStep.id)
+        setFlowSteps(messageFlowManager.getSteps())
+        setActiveHighlightId(messageFlowManager.getActiveHighlightId())
+      } catch (error) {
+        console.error('Failed to execute turn:', error)
+        // Update thinking step to show error
+        messageFlowManager.updateStep(thinkingStep.id, { 
+          text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          status: StepStatus.FAILED 
+        })
+        setFlowSteps(messageFlowManager.getSteps())
+      }
     }
   }
 
   const handleNewTask = () => {
-    setAiSteps(initialAiSteps)
+    messageFlowManager.reset()
+    setFlowSteps([])
     setInputValue("")
     setActiveHighlightId(null)
     setShowAiChatFlow(true)
@@ -249,7 +235,7 @@ export function GlassmorphicChatbar({
         })
       }, 100)
     }
-  }, [aiSteps, showAiChatFlow])
+  }, [flowSteps, showAiChatFlow])
 
   const handleToolSelect = (selectedTool: MenuItem) => {
     setActiveTool(activeTool?.id === selectedTool.id ? null : selectedTool)
@@ -345,10 +331,10 @@ export function GlassmorphicChatbar({
                       className={cn(
                         "w-full bg-transparent text-sm text-neutral-800 dark:text-neutral-100 placeholder:text-neutral-600 dark:placeholder:text-neutral-400/80 outline-none",
                       )}
-                      disabled={isProcessing}
+                      disabled={isStreaming}
                     />
                   </form>
-                  {inputValue && !isProcessing && (
+                  {inputValue && !isStreaming && (
                     <button
                       type="submit"
                       onClick={(e) => {
@@ -378,7 +364,7 @@ export function GlassmorphicChatbar({
                     {showAiChatFlow ? (
                       <div className="mb-3">
                         <AgentStatusIndicator
-                          steps={aiSteps}
+                          steps={flowSteps}
                           onStepClick={handleAiStepSelectForDetail}
                           itemRefs={stepItemRefs}
                           activeHighlightId={activeHighlightId}

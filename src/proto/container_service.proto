@@ -1,0 +1,78 @@
+// aria/v1/container_service.proto
+syntax = "proto3";
+
+package aria.v1;
+
+import "google/protobuf/timestamp.proto";
+import "aria.proto";
+
+// Service for direct, low-level management of containers.
+// Wraps the underlying quilt daemon.
+service ContainerService {
+    rpc CreateContainer(CreateContainerRequest) returns (Container);
+    rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+    rpc StopContainer(StopContainerRequest) returns (StopContainerResponse);
+    rpc RemoveContainer(RemoveContainerRequest) returns (RemoveContainerResponse);
+    rpc GetContainer(GetContainerRequest) returns (Container);
+    rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
+    rpc StreamContainerLogs(StreamContainerLogsRequest) returns (stream ContainerLog);
+}
+
+message Container {
+    string id = 1;
+    string user_id = 2;
+    optional string session_id = 3;
+    string name = 4;
+    string image_path = 5;
+    TaskStatus status = 6;
+    google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateContainerRequest {
+    string name = 1;
+    string image_path = 2;
+    repeated KeyValuePair environment = 3;
+    bool persistent = 4; // If true, container survives session end
+}
+
+message StartContainerRequest {
+    string container_id = 1;
+}
+message StartContainerResponse {}
+
+message StopContainerRequest {
+    string container_id = 1;
+}
+message StopContainerResponse {}
+
+message RemoveContainerRequest {
+    string container_id = 1;
+}
+message RemoveContainerResponse {}
+
+message GetContainerRequest {
+    string container_id = 1;
+}
+
+message ListContainersRequest {
+    optional string session_id = 1; // Filter by session
+}
+message ListContainersResponse {
+    repeated Container containers = 1;
+}
+
+message StreamContainerLogsRequest {
+    string container_id = 1;
+    bool follow = 2;
+    optional google.protobuf.Timestamp since = 3;
+}
+message ContainerLog {
+    string line = 1;
+    enum Stream {
+        STREAM_UNSPECIFIED = 0;
+        STDOUT = 1;
+        STDERR = 2;
+    }
+    Stream stream = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}
