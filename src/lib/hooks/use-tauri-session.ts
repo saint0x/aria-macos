@@ -1,5 +1,21 @@
 import { useState, useCallback, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+
+// Electron API type declaration
+declare global {
+  interface Window {
+    __ELECTRON_API__?: {
+      invoke: (command: string, args?: any) => Promise<any>
+    }
+  }
+}
+
+// Electron IPC invoke function
+const invoke = async (command: string, args?: any): Promise<any> => {
+  if (typeof window !== 'undefined' && window.__ELECTRON_API__) {
+    return window.__ELECTRON_API__.invoke(command, args)
+  }
+  throw new Error('Electron API not available')
+}
 
 type ChatMessage = {
   id: string
