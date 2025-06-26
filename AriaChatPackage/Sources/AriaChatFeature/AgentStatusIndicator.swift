@@ -1,0 +1,257 @@
+import SwiftUI
+
+struct AgentStatusIndicator: View {
+    let steps: [EnhancedStep]
+    let onStepClick: (EnhancedStep) -> Void
+    let activeHighlightId: String?
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        if steps.isEmpty {
+            EmptyView()
+        } else {
+            VStack(spacing: 10) { // Matches React's space-y-2.5
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    stepView(for: step)
+                        .slideUpFade(isVisible: true)
+                        .animation(
+                            AnimationSystem.slideUpFade
+                                .delay(Double(index) * 0.05), // Stagger for new items
+                            value: steps.count
+                        )
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func stepView(for step: EnhancedStep) -> some View {
+        let isHighlighted = activeHighlightId == step.id
+        
+        switch step.type {
+        case .userMessage:
+            // User messages align to the right
+            HStack {
+                Spacer()
+                Text(step.text)
+                    .font(.textSM)
+                    .foregroundColor(Color.textPrimary(for: colorScheme))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: 300, alignment: .trailing) // 80% of max width
+            }
+            .background(
+                Group {
+                    if isHighlighted {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(colorScheme == .dark ? Color(red: 64/255, green: 64/255, blue: 64/255).opacity(0.5) : Color(red: 243/255, green: 244/255, blue: 246/255).opacity(0.7))
+                            .shadow(color: Color.white.opacity(0.1), radius: 1, x: 0, y: 1)
+                            .shadow(color: Color.black.opacity(0.05), radius: 1, x: 0, y: -1)
+                            .padding(-6)
+                    }
+                }
+            )
+            
+        case .thought:
+            HStack(alignment: .center, spacing: 8) {
+                statusIcon(for: step)
+                    .frame(width: 16, height: 16)
+                
+                Text(step.text)
+                    .font(.textSM)
+                    .foregroundColor(Color.textPrimary(for: colorScheme))
+                
+                Spacer()
+            }
+            .padding(.horizontal, isHighlighted ? 8 : 0)
+            .padding(.vertical, isHighlighted ? 6 : 0)
+            .background(
+                Group {
+                    if isHighlighted {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(colorScheme == .dark ? Color(red: 64/255, green: 64/255, blue: 64/255).opacity(0.5) : Color(red: 243/255, green: 244/255, blue: 246/255).opacity(0.7))
+                            .shadow(color: Color.white.opacity(0.1), radius: 1, x: 0, y: 1)
+                            .shadow(color: Color.black.opacity(0.05), radius: 1, x: 0, y: -1)
+                    }
+                }
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onStepClick(step)
+            }
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            
+        case .tool:
+            ZStack(alignment: .topLeading) {
+                // Vertical connector line for indented steps
+                if step.isIndented, let stepIndex = steps.firstIndex(where: { $0.id == step.id }), stepIndex > 0 {
+                    let previousStep = steps[stepIndex - 1]
+                    if previousStep.type != .userMessage && previousStep.type != .response {
+                        Rectangle()
+                            .fill(colorScheme == .dark ? Color(white: 0.4).opacity(0.3) : Color.gray.opacity(0.3)) // neutral-400/30 or neutral-600/30
+                            .frame(width: 1, height: 35) // Connect from previous step
+                            .offset(x: step.isIndented ? 32 : 12, y: -25) // Position at parent icon location
+                            .zIndex(-1)
+                    }
+                }
+                
+                HStack(alignment: .center, spacing: step.isIndented ? 8 : 10) { // gap-2 for indented, gap-2.5 for normal
+                    if step.isIndented {
+                        // Indentation for tool steps: ml-5 (20pt) + parent icon (24pt) + spacing (10pt) = 54pt total
+                        Spacer()
+                            .frame(width: 54)
+                    }
+                    
+                    // Icon container with proper sizing
+                    ZStack {
+                        statusIcon(for: step)
+                            .frame(width: 14, height: 14) // Icon is always 14x14 for tools
+                    }
+                    .frame(width: 24, height: 24) // Container is always 24x24
+                    
+                    // Tool text with proper formatting
+                    if let toolName = step.toolName {
+                        Text(toolName)
+                            .font(.textXS(.medium)) // Size 12 medium for tool name
+                            .foregroundColor(step.status == .active ? 
+                                Color.textPrimary(for: colorScheme) : 
+                                Color.textSecondary(for: colorScheme))
+                        + Text(": ")
+                            .font(.textXS)
+                            .foregroundColor(Color.textSecondary(for: colorScheme))
+                        + Text(step.text)
+                            .font(.textXS) // Size 12 for action text
+                            .foregroundColor(step.status == .active ? 
+                                (colorScheme == .dark ? Color.white.opacity(0.9) : Color.black.opacity(0.8)) : 
+                                (colorScheme == .dark ? Color.white.opacity(0.7) : Color.gray.opacity(0.9)))
+                    } else {
+                        Text(step.text)
+                            .font(.textXS) // Size 12 for tools
+                            .foregroundColor(step.status == .active ? 
+                                Color.textPrimary(for: colorScheme) : 
+                                Color.textSecondary(for: colorScheme))
+                    }
+                    
+                    Spacer()
+                    
+                    // Chevron for clickable steps
+                    if !step.isIndented || isHighlighted {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 20, height: 20) // h-5 w-5
+                            .font(.system(size: 12))
+                            .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.5) : Color.gray.opacity(0.9)) // text-neutral-500/90
+                    }
+                }
+                .padding(.horizontal, 8) // px-2
+                .padding(.vertical, 6) // py-1.5
+                .background(
+                    Group {
+                        if isHighlighted {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(colorScheme == .dark ? Color(red: 64/255, green: 64/255, blue: 64/255).opacity(0.5) : Color(red: 243/255, green: 244/255, blue: 246/255).opacity(0.7))
+                                .shadow(color: Color.white.opacity(0.1), radius: 1, x: 0, y: 1)
+                                .shadow(color: Color.black.opacity(0.05), radius: 1, x: 0, y: -1)
+                        }
+                    }
+                )
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onStepClick(step)
+            }
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            
+        case .response:
+            HStack(alignment: .top, spacing: 8) {
+                statusIcon(for: step)
+                    .frame(width: 16, height: 16)
+                    .padding(.top, 2)
+                
+                Text(step.text)
+                    .font(.textSM)
+                    .foregroundColor(Color.textPrimary(for: colorScheme))
+                    .multilineTextAlignment(.leading)
+                
+                Spacer()
+            }
+            .padding(.horizontal, isHighlighted ? 8 : 0)
+            .padding(.vertical, isHighlighted ? 6 : 0)
+            .background(
+                Group {
+                    if isHighlighted {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(colorScheme == .dark ? Color(red: 64/255, green: 64/255, blue: 64/255).opacity(0.5) : Color(red: 243/255, green: 244/255, blue: 246/255).opacity(0.7))
+                            .shadow(color: Color.white.opacity(0.1), radius: 1, x: 0, y: 1)
+                            .shadow(color: Color.black.opacity(0.05), radius: 1, x: 0, y: -1)
+                    }
+                }
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onStepClick(step)
+            }
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func statusIcon(for step: EnhancedStep) -> some View {
+        if step.status == .completed {
+            // CheckIcon equivalent
+            Image(systemName: "checkmark")
+                .foregroundColor(Color(red: 34/255, green: 197/255, blue: 94/255).opacity(0.9)) // apple-green-dark/90
+                .font(.system(size: 16, weight: .regular))
+        } else if step.status == .failed {
+            // Failed icon
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(Color(red: 239/255, green: 68/255, blue: 68/255)) // red-500
+                .font(.system(size: 14, weight: .regular))
+        } else {
+            // Active/pending state - show different icons based on type
+            if step.type == .tool {
+                // ZapIcon for tool - with proper colors based on state
+                let toolColor: Color = {
+                    if step.status == .active {
+                        return colorScheme == .dark ? Color.white : Color.black.opacity(0.8) // text-neutral-800 dark:text-neutral-100
+                    } else {
+                        return colorScheme == .dark ? Color(white: 0.6).opacity(0.8) : Color.gray.opacity(0.8) // text-neutral-500/80 dark:text-neutral-400/80
+                    }
+                }()
+                
+                Image(systemName: "bolt.fill")
+                    .foregroundColor(toolColor)
+                    .font(.system(size: 14, weight: .regular))
+            } else if step.type == .thought && (step.text.contains("Synthesizing") || step.text.contains("Processing")) {
+                // Loader for active thoughts
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .scaleEffect(0.7)
+                    .frame(width: 14, height: 14)
+            } else {
+                // Default dot for thoughts
+                Circle()
+                    .fill(Color(red: 115/255, green: 115/255, blue: 115/255).opacity(0.7)) // neutral-500/70
+                    .frame(width: 8, height: 8)
+            }
+        }
+    }
+}
