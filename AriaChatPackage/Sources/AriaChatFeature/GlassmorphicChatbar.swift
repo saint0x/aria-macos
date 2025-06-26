@@ -23,11 +23,45 @@ public struct GlassmorphicChatbar: View {
     
     public var body: some View {
         ZStack {
-            // Main chatbar - always stays in center
+            // Main content stack
             VStack(spacing: 0) {
                 // Main chatbar
                 mainChatbar
                     .frame(maxWidth: maxWidth)
+                
+                // Dropdowns positioned below chatbar with overlay to prevent layout shift
+                Color.clear
+                    .frame(height: 0)
+                    .frame(maxWidth: maxWidth)
+                    .overlay(alignment: .top) {
+                        ZStack(alignment: .top) {
+                            // Tool dropdown - aligned to leading edge
+                            if state.isToolMenuOpen {
+                                HStack {
+                                    DropdownMenuView(items: state.toolMenuItems, onSelect: handleToolSelect, isOpen: $state.isToolMenuOpen)
+                                        .frame(width: 180)
+                                        .padding(.leading, 12) // Match footer button padding
+                                    Spacer()
+                                }
+                                .frame(maxWidth: maxWidth)
+                                .padding(.top, 16) // 16pt gap below chatbar
+                                .zIndex(9999)
+                            }
+                            
+                            // View dropdown - aligned to trailing edge
+                            if state.isViewMenuOpen {
+                                HStack {
+                                    Spacer()
+                                    DropdownMenuView(items: state.viewMenuItems, onSelect: handleViewSelect, isOpen: $state.isViewMenuOpen)
+                                        .frame(width: 180)
+                                        .padding(.trailing, 12) // Match footer button padding
+                                }
+                                .frame(maxWidth: maxWidth)
+                                .padding(.top, 16) // 16pt gap below chatbar
+                                .zIndex(9999)
+                            }
+                        }
+                    }
                 
                 // Tool upload success display (when not expanded)
                 if !state.expanded && state.showToolUploadSuccess {
@@ -53,36 +87,16 @@ public struct GlassmorphicChatbar: View {
                 ))
             }
             
-            // Dropdowns overlay - highest level
-            GeometryReader { geometry in
-                ZStack {
-                    // Invisible background for clicks outside dropdowns
-                    if state.isToolMenuOpen || state.isViewMenuOpen {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                state.isToolMenuOpen = false
-                                state.isViewMenuOpen = false
-                            }
-                            .frame(width: 2000, height: 1200) // Match canvas size
+            // Invisible background for clicks outside dropdowns
+            if state.isToolMenuOpen || state.isViewMenuOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        state.isToolMenuOpen = false
+                        state.isViewMenuOpen = false
                     }
-                    
-                    // Tool dropdown menu
-                    if state.isToolMenuOpen {
-                        DropdownMenuView(items: state.toolMenuItems, onSelect: handleToolSelect, isOpen: $state.isToolMenuOpen)
-                            .frame(width: 180)
-                            .position(x: 1000 - maxWidth/2 + 100, y: state.expanded ? 916 : 706)
-                            .zIndex(9999)
-                    }
-                    
-                    // View dropdown menu
-                    if state.isViewMenuOpen {
-                        DropdownMenuView(items: state.viewMenuItems, onSelect: handleViewSelect, isOpen: $state.isViewMenuOpen)
-                            .frame(width: 180)
-                            .position(x: 1000 + maxWidth/2 - 100, y: state.expanded ? 916 : 706)
-                            .zIndex(9999)
-                    }
-                }
+                    .frame(width: 2000, height: 1200) // Match canvas size
+                    .zIndex(1)
             }
         }
         .onAppear {

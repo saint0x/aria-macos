@@ -69,6 +69,7 @@ class GlassmorphicChatbarState: ObservableObject {
     @Published var activeView: MenuItem
     @Published var blurIntensity: CGFloat = 24
     @Published var showToolUploadSuccess = false
+    @Published var chatbarSize: CGSize = .zero
     
     let mockTasks: [Task] = [
         Task(id: "1", title: "Implement authentication", detailIdentifier: "AUTH-001", status: .inProgress, timestamp: Date()),
