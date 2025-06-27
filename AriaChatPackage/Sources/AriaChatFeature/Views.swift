@@ -2,29 +2,100 @@ import SwiftUI
 
 // MARK: - Task List View
 struct TaskListView: View {
-    let onTaskSelect: (Task) -> Void
-    
-    @State private var mockTasks: [Task] = [
-        Task(id: "1", title: "Implement authentication", detailIdentifier: "AUTH-001", status: .inProgress, timestamp: Date()),
-        Task(id: "2", title: "Database optimization", detailIdentifier: "DB-002", status: .pending, timestamp: Date()),
-        Task(id: "3", title: "API integration", detailIdentifier: "API-003", status: .completed, timestamp: Date())
-    ]
+    let onTaskSelect: (AriaTask) -> Void
+    @StateObject private var taskManager = TaskManager.shared
+    @State private var isInitialLoad = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Active Tasks")
-                .font(.system(size: 16, weight: .semibold))
-                .padding(.bottom, 4)
+            HStack {
+                Text("Active Tasks")
+                    .font(.system(size: 16, weight: .semibold))
+                
+                Spacer()
+                
+                if taskManager.isLoadingTasks && !isInitialLoad {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            .padding(.bottom, 4)
             
-            ForEach(mockTasks) { task in
-                TaskRow(task: task, onSelect: { onTaskSelect(task) })
+            if taskManager.tasks.isEmpty && !taskManager.isLoadingTasks {
+                Text("No tasks available")
+                    .font(.textSM)
+                    .foregroundColor(Color.textSecondary(for: .light))
+                    .padding(.vertical, 20)
+            } else {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(taskManager.tasks, id: \.id) { protoTask in
+                            TaskRow(
+                                task: convertProtoTaskToAriaTask(protoTask),
+                                onSelect: { onTaskSelect(convertProtoTaskToAriaTask(protoTask)) }
+                            )
+                        }
+                        
+                        if taskManager.hasMoreTasks && !taskManager.isLoadingTasks {
+                            Button(action: {
+                                Task {
+                                    try? await taskManager.loadMoreTasks()
+                                }
+                            }) {
+                                Text("Load More")
+                                    .font(.textSM)
+                                    .foregroundColor(Color.appleBlue)
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+            
+            if let error = taskManager.taskError {
+                Text("Error: \(error.localizedDescription)")
+                    .font(.textXS)
+                    .foregroundColor(.red)
+                    .padding(.top, 4)
             }
         }
+        .onAppear {
+            if isInitialLoad {
+                Task {
+                    isInitialLoad = false
+                    print("TaskListView: Starting to load tasks...")
+                    do {
+                        // First ensure we're connected
+                        let connectionManager = await GRPCConnectionManager.shared
+                        print("TaskListView: Got connection manager")
+                        try await connectionManager.connect()
+                        print("TaskListView: Connected to gRPC")
+                        
+                        // Now list tasks
+                        try await taskManager.listTasks(refresh: true)
+                        print("TaskListView: Listed tasks successfully")
+                    } catch {
+                        print("TaskListView: Error loading tasks: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func convertProtoTaskToAriaTask(_ protoTask: Aria_Task) -> AriaTask {
+        AriaTask(
+            id: protoTask.id,
+            title: "Task \(protoTask.id.prefix(8))",
+            detailIdentifier: protoTask.sessionID,
+            status: taskManager.mapTaskStatus(protoTask.status),
+            timestamp: Date(timeIntervalSince1970: protoTask.createdAt.timeIntervalSince1970)
+        )
     }
 }
 
 struct TaskRow: View {
-    let task: Task
+    let task: AriaTask
     let onSelect: () -> Void
     
     @State private var isHovered = false
@@ -569,7 +640,7 @@ struct ToolUploadSuccessDisplay: View {
 struct StepDetailPane: View {
     let step: EnhancedStep
     let onClose: () -> Void
-    let tasks: [Task]
+    let tasks: [AriaTask]
     
     @State private var viewMode: ViewMode = .richText
     @State private var expandedSections = Set<String>()
@@ -810,7 +881,7 @@ struct StepDetailsContent {
 }
 
 // Helper function to get step details content
-func getStepDetailsContent(for step: EnhancedStep, tasks: [Task]) -> StepDetailsContent? {
+func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDetailsContent? {
     if step.text.hasPrefix("TASK_DETAIL_") {
         let taskId = step.text.replacingOccurrences(of: "TASK_DETAIL_", with: "")
         if let task = tasks.first(where: { $0.id == taskId }) {

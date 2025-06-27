@@ -348,78 +348,100 @@ public struct GlassmorphicChatbar: View {
         state.activeHighlightId = newUserMessageStep.id
         state.inputValue = ""
         
-        // Simulate AI response
-        simulateAIResponse()
+        // Execute turn using ChatService
+        Task {
+            await executeAIResponse(input: userMessageContent)
+        }
     }
     
     
-    private func simulateAIResponse() {
-        // Similar to simulateInitialConversation but for new messages
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            state.isProcessing = true
-            state.processingComplete = false
+    private func executeAIResponse(input: String) async {
+        state.isProcessing = true
+        state.processingComplete = false
+        
+        do {
+            var activeThoughtId: String?
+            var activeToolIds: [String: String] = [:] // toolName -> stepId
             
-            let synthesizingThought = EnhancedStep(
-                id: "thought-synthesizing-\(UUID().uuidString)",
-                type: .thought,
-                text: "Processing your request...",
-                status: .active
-            )
-            state.aiSteps.append(synthesizingThought)
-            state.activeHighlightId = synthesizingThought.id
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                // Add tool steps
-                let queryingStep = EnhancedStep(
-                    id: "tool-1-\(UUID().uuidString)",
-                    type: .tool,
-                    text: "Querying knowledge base",
-                    status: .active,
-                    toolName: nil,
-                    isIndented: true
-                )
-                state.aiSteps.append(queryingStep)
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    // Complete first tool
-                    if let index = state.aiSteps.firstIndex(where: { $0.id == queryingStep.id }) {
-                        state.aiSteps[index].status = .completed
+            try await state.chatService.executeTurn(input: input) { event in
+                switch event {
+                case .message(let message):
+                    let step = EnhancedStep(
+                        id: "msg-\(message.id)",
+                        type: self.mapMessageRoleToStepType(message.role),
+                        text: message.content,
+                        status: .active
+                    )
+                    self.state.aiSteps.append(step)
+                    self.state.activeHighlightId = step.id
+                    
+                    if message.role == .thought {
+                        activeThoughtId = step.id
                     }
                     
-                    // Add second tool
-                    let analyzingStep = EnhancedStep(
-                        id: "tool-2-\(UUID().uuidString)",
+                case .toolCall(let toolCall):
+                    let step = EnhancedStep(
+                        id: "tool-\(toolCall.id)",
                         type: .tool,
-                        text: "Analyzing patterns",
+                        text: toolCall.toolName,
                         status: .active,
-                        toolName: nil,
+                        toolName: toolCall.toolName,
                         isIndented: true
                     )
-                    state.aiSteps.append(analyzingStep)
+                    self.state.aiSteps.append(step)
+                    activeToolIds[toolCall.toolName] = step.id
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        // Complete all
-                        if let index = state.aiSteps.firstIndex(where: { $0.id == analyzingStep.id }) {
-                            state.aiSteps[index].status = .completed
-                        }
-                        if let index = state.aiSteps.firstIndex(where: { $0.id == synthesizingThought.id }) {
-                            state.aiSteps[index].status = .completed
-                        }
-                        
-                        let aiResponseStep = EnhancedStep(
-                            id: "response-\(UUID().uuidString)",
-                            type: .response,
-                            text: "Based on the analysis, here's what I found in your request.",
-                            status: .completed
-                        )
-                        state.aiSteps.append(aiResponseStep)
-                        state.activeHighlightId = aiResponseStep.id
-                        
-                        state.isProcessing = false
-                        state.processingComplete = true
+                case .toolResult(let toolResult):
+                    // Update the corresponding tool step
+                    if let stepId = activeToolIds[toolResult.toolName],
+                       let index = self.state.aiSteps.firstIndex(where: { $0.id == stepId }) {
+                        self.state.aiSteps[index].status = toolResult.success ? .completed : .failed
                     }
+                    
+                case .finalResponse(let response):
+                    // Complete any active thought
+                    if let thoughtId = activeThoughtId,
+                       let index = self.state.aiSteps.firstIndex(where: { $0.id == thoughtId }) {
+                        self.state.aiSteps[index].status = .completed
+                    }
+                    
+                    let responseStep = EnhancedStep(
+                        id: "response-\(UUID().uuidString)",
+                        type: .response,
+                        text: response,
+                        status: .completed
+                    )
+                    self.state.aiSteps.append(responseStep)
+                    self.state.activeHighlightId = responseStep.id
                 }
             }
+        } catch {
+            // Handle error
+            let errorStep = EnhancedStep(
+                id: "error-\(UUID().uuidString)",
+                type: .response,
+                text: "Error: \(error.localizedDescription)",
+                status: .failed
+            )
+            state.aiSteps.append(errorStep)
+        }
+        
+        state.isProcessing = false
+        state.processingComplete = true
+    }
+    
+    private func mapMessageRoleToStepType(_ role: MessageRole) -> StepType {
+        switch role {
+        case .user:
+            return .userMessage
+        case .assistant:
+            return .response
+        case .thought:
+            return .thought
+        case .tool:
+            return .tool
+        case .system:
+            return .thought
         }
     }
     
@@ -432,6 +454,22 @@ public struct GlassmorphicChatbar: View {
         state.selectedItemForDetail = nil
         state.activeTool = nil
         isInputFocused = true
+        
+        // Create new session
+        Task {
+            do {
+                _ = try await state.sessionManager.createSession()
+            } catch {
+                // Handle error - show in UI
+                let errorStep = EnhancedStep(
+                    id: "error-\(UUID().uuidString)",
+                    type: .response,
+                    text: "Failed to create new session: \(error.localizedDescription)",
+                    status: .failed
+                )
+                state.aiSteps.append(errorStep)
+            }
+        }
     }
     
     private func handleToolSelect(_ tool: MenuItem) {
@@ -450,7 +488,7 @@ public struct GlassmorphicChatbar: View {
         isInputFocused = true
     }
     
-    private func handleTaskSelectForDetail(_ task: Task) {
+    private func handleTaskSelectForDetail(_ task: AriaTask) {
         state.selectedItemForDetail = EnhancedStep(
             id: task.id,
             type: .thought,
