@@ -359,21 +359,84 @@ public struct GlassmorphicChatbar: View {
         state.isProcessing = true
         state.processingComplete = false
         
+        // Add initial acknowledgment as a visible response
+        let acknowledgmentId = "ack-\(UUID().uuidString)"
+        let acknowledgmentStep = EnhancedStep(
+            id: acknowledgmentId,
+            type: .response,
+            text: "Let me help you with that...",
+            status: .active,
+            metadata: MessageMetadata(isStatus: false, isFinal: false, messageType: "acknowledgment")
+        )
+        state.aiSteps.append(acknowledgmentStep)
+        state.activeHighlightId = acknowledgmentStep.id
+        
+        var eventCount = 0
+        var receivedFinalResponse = false
+        var hasRemovedAcknowledgment = false
+        
         do {
             // Create a simple actor to hold mutable state
             let turnState = TurnState()
+            var hasReceivedAnyEvents = false
+            
+            print("GlassmorphicChatbar: Starting executeTurn for input: '\(input)'")
             
             try await state.chatService.executeTurn(input: input) { event in
                 Task { @MainActor in
+                    eventCount += 1
+                    hasReceivedAnyEvents = true
+                    print("GlassmorphicChatbar: Received event #\(eventCount): \(event)")
+                    
+                    // Remove acknowledgment on first meaningful event
+                    if !hasRemovedAcknowledgment {
+                        switch event {
+                        case .message(let msg) where msg.metadata?.messageType != "acknowledgment":
+                            fallthrough
+                        case .toolCall, .finalResponse:
+                            // Remove the acknowledgment step
+                            if let index = self.state.aiSteps.firstIndex(where: { $0.id == acknowledgmentId }) {
+                                self.state.aiSteps.remove(at: index)
+                            }
+                            hasRemovedAcknowledgment = true
+                        default:
+                            break
+                        }
+                    }
+                    
                     switch event {
                     case .message(let message):
+                        // Check if this is an assistant message that should be treated as a response
+                        var stepType = self.mapMessageRoleToStepType(message.role)
+                        var metadata = message.metadata
+                        
+                        // If it's an assistant message without metadata, check if it looks like a final response
+                        if message.role == .assistant && metadata == nil {
+                            // Simple heuristic: if it doesn't start with status-like text, treat it as a response
+                            let statusPrefixes = ["Understood", "Executing", "Processing", "Analyzing", "Working on", "Let me"]
+                            let looksLikeStatus = statusPrefixes.contains { message.content.hasPrefix($0) }
+                            
+                            if !looksLikeStatus {
+                                stepType = .response
+                                metadata = MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
+                            }
+                        }
+                        
                         let step = EnhancedStep(
                             id: "msg-\(message.id)",
-                            type: self.mapMessageRoleToStepType(message.role),
+                            type: stepType,
                             text: message.content,
                             status: .active,
-                            metadata: message.metadata
+                            metadata: metadata
                         )
+                        
+                        // Debug logging for metadata
+                        if let meta = metadata {
+                            print("Message: '\(message.content.prefix(50))...' - Metadata: isStatus=\(meta.isStatus), isFinal=\(meta.isFinal), messageType=\(meta.messageType)")
+                        } else {
+                            print("Message: '\(message.content.prefix(50))...' - No metadata, role=\(message.role)")
+                        }
+                        
                         self.state.aiSteps.append(step)
                         self.state.activeHighlightId = step.id
                         
@@ -382,25 +445,40 @@ public struct GlassmorphicChatbar: View {
                         }
                         
                     case .toolCall(let toolCall):
+                        // Debug log tool parameters
+                        print("Tool call: \(toolCall.toolName) with params: \(toolCall.parameters)")
+                        
                         let step = EnhancedStep(
                             id: "tool-\(toolCall.id)",
                             type: .tool,
                             text: toolCall.toolName,
                             status: .active,
                             toolName: toolCall.toolName,
-                            isIndented: true
+                            isIndented: true,
+                            toolParameters: toolCall.parameters
                         )
                         self.state.aiSteps.append(step)
                         await turnState.setToolId(toolCall.toolName, stepId: step.id)
                         
                     case .toolResult(let toolResult):
-                        // Update the corresponding tool step
+                        // Debug log tool result
+                        print("Tool result for \(toolResult.toolName): success=\(toolResult.success), output=\(toolResult.output.prefix(100))...")
+                        
+                        // Update the corresponding tool step with result
                         if let stepId = await turnState.getToolId(toolResult.toolName),
                            let index = self.state.aiSteps.firstIndex(where: { $0.id == stepId }) {
                             self.state.aiSteps[index].status = toolResult.success ? .completed : .failed
+                            self.state.aiSteps[index].toolResult = toolResult.output
+                            if let error = toolResult.error {
+                                self.state.aiSteps[index].errorMessage = error
+                            }
+                            print("Updated tool step at index \(index) with result")
+                        } else {
+                            print("Warning: Could not find tool step for \(toolResult.toolName)")
                         }
                         
                     case .finalResponse(let response):
+                        receivedFinalResponse = true
                         // Complete any active thought
                         if let thoughtId = await turnState.getActiveThoughtId(),
                            let index = self.state.aiSteps.firstIndex(where: { $0.id == thoughtId }) {
@@ -411,7 +489,8 @@ public struct GlassmorphicChatbar: View {
                             id: "response-\(UUID().uuidString)",
                             type: .response,
                             text: response,
-                            status: .completed
+                            status: .completed,
+                            metadata: MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
                         )
                         self.state.aiSteps.append(responseStep)
                         self.state.activeHighlightId = responseStep.id
@@ -419,6 +498,7 @@ public struct GlassmorphicChatbar: View {
                 }
             }
         } catch {
+            print("GlassmorphicChatbar: Error in executeTurn: \(error)")
             // Handle error
             let errorStep = EnhancedStep(
                 id: "error-\(UUID().uuidString)",
@@ -429,8 +509,28 @@ public struct GlassmorphicChatbar: View {
             state.aiSteps.append(errorStep)
         }
         
+        print("GlassmorphicChatbar: Execution complete. Events received: \(eventCount), Final response: \(receivedFinalResponse)")
+        
         state.isProcessing = false
         state.processingComplete = true
+        
+        // Ensure at least one response is visible
+        ensureResponseVisible()
+        
+        // If we never removed the acknowledgment and no final response, update it to show completion
+        if !hasRemovedAcknowledgment && !receivedFinalResponse {
+            if let index = state.aiSteps.firstIndex(where: { $0.id == acknowledgmentId }) {
+                // Create a new step with updated text and status
+                let updatedStep = EnhancedStep(
+                    id: acknowledgmentId,
+                    type: .response,
+                    text: "I've processed your request. Please let me know if you need anything else.",
+                    status: .completed,
+                    metadata: MessageMetadata(isStatus: false, isFinal: false, messageType: "acknowledgment")
+                )
+                state.aiSteps[index] = updatedStep
+            }
+        }
     }
     
     private func mapMessageRoleToStepType(_ role: MessageRole) -> StepType {
@@ -503,6 +603,47 @@ public struct GlassmorphicChatbar: View {
     private func handleAiStepSelectForDetail(_ step: EnhancedStep) {
         if step.type == .tool || step.type == .thought || step.type == .response {
             state.selectedItemForDetail = step
+        }
+    }
+    
+    private func ensureResponseVisible() {
+        // Check if any response is visible in the main chat
+        let visibleResponses = state.aiSteps.filter { step in
+            step.isVisibleInMainChat && (step.type == .response || 
+                (step.metadata?.isFinal == true && step.type != .userMessage))
+        }
+        
+        // If no response is visible, create one from the last non-user message
+        if visibleResponses.isEmpty {
+            // Find the last assistant/thought message that has actual content
+            if let lastMessage = state.aiSteps.reversed().first(where: { step in
+                step.type != .userMessage && 
+                step.type != .tool &&
+                !step.text.isEmpty &&
+                !step.text.hasPrefix("Executing") &&
+                !step.text.hasPrefix("Understood")
+            }) {
+                // Create a visible response from the last message
+                let responseStep = EnhancedStep(
+                    id: "fallback-\(UUID().uuidString)",
+                    type: .response,
+                    text: lastMessage.text,
+                    status: .completed,
+                    metadata: MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
+                )
+                state.aiSteps.append(responseStep)
+                state.activeHighlightId = responseStep.id
+            } else {
+                // If no suitable message found, show a generic error
+                let errorStep = EnhancedStep(
+                    id: "no-response-\(UUID().uuidString)",
+                    type: .response,
+                    text: "I apologize, but I encountered an issue processing your request. Please try again.",
+                    status: .failed
+                )
+                state.aiSteps.append(errorStep)
+                state.activeHighlightId = errorStep.id
+            }
         }
     }
 }

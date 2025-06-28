@@ -897,18 +897,55 @@ func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDet
             )
         }
     } else if step.type == .tool {
+        // Format parameters
+        var parametersText = "Tool: \(step.toolName ?? "Unknown")\nStatus: \(step.status.rawValue)"
+        var parametersJson: [String: Any] = ["toolName": step.toolName ?? "", "status": step.status.rawValue]
+        
+        if let params = step.toolParameters, !params.isEmpty {
+            parametersText += "\n\nParameters:"
+            parametersJson["parameters"] = params
+            for (key, value) in params {
+                parametersText += "\n  \(key): \(value)"
+            }
+        }
+        
+        // Format results
+        var outputText = "Tool execution "
+        var outputJson: [String: Any] = [:]
+        
+        if step.status == .failed {
+            outputText += "failed"
+            if let error = step.errorMessage {
+                outputText += "\nError: \(error)"
+                outputJson["error"] = error
+            }
+        } else if let result = step.toolResult {
+            outputText = "Result:\n\(result)"
+            // Try to parse as JSON for better display
+            if let data = result.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) {
+                outputJson["result"] = json
+            } else {
+                outputJson["result"] = result
+            }
+        } else if step.status == .active {
+            outputText = "Tool is currently executing..."
+        } else {
+            outputText = "No output available"
+        }
+        
         return StepDetailsContent(
             input: SectionContent(
-                richText: "Tool: \(step.toolName ?? "Unknown")\nStatus: \(step.status.rawValue)",
-                jsonData: ["toolName": step.toolName ?? "", "status": step.status.rawValue]
+                richText: parametersText,
+                jsonData: parametersJson
             ),
             thinking: SectionContent(
-                richText: "Status: \(step.status.rawValue)\nDetails: \(step.text)",
-                jsonData: ["status": step.status.rawValue, "message": step.text]
+                richText: "Status: \(step.status.rawValue)\nExecution: \(step.text)",
+                jsonData: ["status": step.status.rawValue, "execution": step.text]
             ),
             output: SectionContent(
-                richText: "Tool output would appear here",
-                jsonData: ["result": "mock_tool_output_data"]
+                richText: outputText,
+                jsonData: outputJson
             ),
             taskStatus: nil,
             isAiStep: true

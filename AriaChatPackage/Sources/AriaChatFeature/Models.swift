@@ -24,6 +24,9 @@ struct EnhancedStep: Identifiable {
     var toolName: String?
     var isIndented: Bool = false
     var metadata: MessageMetadata?
+    var toolParameters: [String: String]?
+    var toolResult: String?
+    var errorMessage: String?
     
     /// Computed property to determine if this step should be visible in the main chat
     var isVisibleInMainChat: Bool {

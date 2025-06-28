@@ -29,9 +29,12 @@ public class ChatService: ObservableObject {
         processingComplete = false
         chatError = nil
         
+        print("ChatService: Starting executeTurn with input: \(input)")
+        
         defer {
             isProcessing = false
             processingComplete = true
+            print("ChatService: executeTurn completed")
         }
         
         // Cancel any existing stream
@@ -103,6 +106,7 @@ public class ChatService: ObservableObject {
     
     private func handleStreamEvent(_ event: SSEEvent, onTurnOutput: @escaping TurnOutputHandler) async {
         print("ChatService: Received SSE event type: \(event.type)")
+        print("ChatService: Event data: \(event.data)")
         
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -129,10 +133,16 @@ public class ChatService: ObservableObject {
                 // Convert AnyCodable to string parameters
                 var params: [String: String] = [:]
                 for (key, value) in eventData.parametersJson {
-                    // AnyCodable wraps the actual value - we need to encode it as JSON
-                    if let jsonData = try? JSONEncoder().encode(value),
-                       let jsonString = String(data: jsonData, encoding: .utf8) {
+                    // Convert the AnyCodable value to a string representation
+                    // If it's already a string, use it directly; otherwise convert to JSON
+                    if let stringValue = value.wrappedValue as? String {
+                        params[key] = stringValue
+                    } else if let jsonData = try? JSONSerialization.data(withJSONObject: value.wrappedValue),
+                              let jsonString = String(data: jsonData, encoding: .utf8) {
                         params[key] = jsonString
+                    } else {
+                        // Fallback to description
+                        params[key] = String(describing: value.wrappedValue)
                     }
                 }
                 
@@ -150,7 +160,13 @@ public class ChatService: ObservableObject {
                 
                 // Convert result JSON to string
                 let output: String
-                if let jsonData = try? JSONEncoder().encode(eventData.resultJson),
+                // resultJson is [String: AnyCodable], so we need to convert it
+                var resultDict: [String: Any] = [:]
+                for (key, value) in eventData.resultJson {
+                    resultDict[key] = value.wrappedValue
+                }
+                
+                if let jsonData = try? JSONSerialization.data(withJSONObject: resultDict, options: .prettyPrinted),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
                     output = jsonString
                 } else {
@@ -176,9 +192,22 @@ public class ChatService: ObservableObject {
             
         case "error":
             print("ChatService: Received error event: \(event.data)")
+            // Try to parse error and show it to user
+            if let data = event.data.data(using: .utf8),
+               let errorInfo = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorMessage = errorInfo["message"] as? String {
+                let errorMsg = Message(
+                    id: UUID().uuidString,
+                    role: .assistant,
+                    content: "Error: \(errorMessage)",
+                    metadata: MessageMetadata(isStatus: false, isFinal: true, messageType: "error")
+                )
+                onTurnOutput(.message(errorMsg))
+            }
             
         default:
             print("ChatService: Unknown event type: \(event.type)")
+            print("ChatService: Event data: \(event.data)")
         }
     }
     
@@ -211,12 +240,22 @@ public class ChatService: ObservableObject {
     
     // Mock implementation that simulates streaming
     private func simulateStreamingResponse(input: String, sessionId: String, onTurnOutput: @escaping TurnOutputHandler) async {
-        // Simulate initial thinking
+        // Simulate initial acknowledgment
+        onTurnOutput(.message(Message(
+            id: UUID().uuidString,
+            role: .assistant,
+            content: "Understood, I'll help you with that.",
+            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "status")
+        )))
+        
+        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+        
+        // Simulate thinking
         onTurnOutput(.message(Message(
             id: UUID().uuidString,
             role: .thought,
-            content: "Analyzing your request...",
-            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "status")
+            content: "Analyzing the request and determining the best approach...",
+            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "thinking")
         )))
         
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
@@ -242,7 +281,7 @@ public class ChatService: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
         
         // Simulate final response
-        onTurnOutput(.finalResponse("Based on my analysis, here's a response to your query: \(input)"))
+        onTurnOutput(.finalResponse("Based on my analysis, here's a comprehensive response to your query about \(input). This is a mock response demonstrating the system's capability to process your request and provide meaningful output."))
     }
 }
 

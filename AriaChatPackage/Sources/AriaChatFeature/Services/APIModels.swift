@@ -149,6 +149,10 @@ public struct UploadBundleResponse: Codable, Sendable {
 public struct AnyCodable: Codable, @unchecked Sendable {
     private let value: Any
     
+    public var wrappedValue: Any {
+        return value
+    }
+    
     public init(_ value: Any) {
         self.value = value
     }

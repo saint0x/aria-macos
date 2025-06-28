@@ -14,15 +14,23 @@ struct AgentStatusIndicator: View {
         if visibleSteps.isEmpty {
             EmptyView()
         } else {
-            VStack(spacing: 10) { // Matches React's space-y-2.5
+            VStack(spacing: 0) { // Changed to 0 for custom spacing
                 ForEach(Array(visibleSteps.enumerated()), id: \.element.id) { index, step in
-                    stepView(for: step)
-                        .slideUpFade(isVisible: true)
-                        .animation(
-                            AnimationSystem.slideUpFade
-                                .delay(Double(index) * 0.05), // Stagger for new items
-                            value: visibleSteps.count
-                        )
+                    VStack(spacing: 0) {
+                        stepView(for: step)
+                            .slideUpFade(isVisible: true)
+                            .animation(
+                                AnimationSystem.slideUpFade
+                                    .delay(Double(index) * 0.05), // Stagger for new items
+                                value: visibleSteps.count
+                            )
+                        
+                        // Add spacing based on message grouping
+                        if index < visibleSteps.count - 1 {
+                            let nextStep = visibleSteps[index + 1]
+                            spacingView(between: step, and: nextStep)
+                        }
+                    }
                 }
             }
         }
@@ -257,5 +265,31 @@ struct AgentStatusIndicator: View {
                     .frame(width: 8, height: 8)
             }
         }
+    }
+    
+    @ViewBuilder
+    private func spacingView(between current: EnhancedStep, and next: EnhancedStep) -> some View {
+        // Determine spacing based on message types
+        let spacing: CGFloat = {
+            // Group consecutive tool calls with minimal spacing
+            if current.type == .tool && next.type == .tool {
+                return 4
+            }
+            // Group consecutive responses with small spacing
+            else if current.type == .response && next.type == .response {
+                return 6
+            }
+            // Larger spacing between different message types
+            else if current.type != next.type {
+                return 16
+            }
+            // Default spacing
+            else {
+                return 10
+            }
+        }()
+        
+        Spacer()
+            .frame(height: spacing)
     }
 }

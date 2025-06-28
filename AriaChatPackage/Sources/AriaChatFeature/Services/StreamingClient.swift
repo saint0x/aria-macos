@@ -196,17 +196,41 @@ private final class SSEDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
             let eventData = buffer.subdata(in: 0..<range.lowerBound)
             buffer.removeSubrange(0..<range.upperBound)
             
-            if let eventString = String(data: eventData, encoding: .utf8) {
+            if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
                 parseAndEmitEvent(eventString)
+            }
+        }
+        
+        // Also check for single newline terminated events (some SSE implementations)
+        if let newlineRange = buffer.range(of: "\n".data(using: .utf8)!),
+           newlineRange.lowerBound == buffer.count - 1 {
+            let eventData = buffer.subdata(in: 0..<newlineRange.lowerBound)
+            if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
+                parseAndEmitEvent(eventString)
+                buffer.removeAll()
             }
         }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
-            onError(error)
+        // Process any remaining data in buffer
+        if !buffer.isEmpty, let eventString = String(data: buffer, encoding: .utf8) {
+            parseAndEmitEvent(eventString)
+            buffer.removeAll()
         }
-        onComplete()
+        
+        if let error = error {
+            // Check if it's a normal stream termination
+            let nsError = error as NSError
+            if nsError.code == NSURLErrorCancelled {
+                // Normal cancellation, not an error
+                onComplete()
+            } else {
+                onError(error)
+            }
+        } else {
+            onComplete()
+        }
     }
     
     private func parseAndEmitEvent(_ eventString: String) {
