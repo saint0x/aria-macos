@@ -371,7 +371,8 @@ public struct GlassmorphicChatbar: View {
                             id: "msg-\(message.id)",
                             type: self.mapMessageRoleToStepType(message.role),
                             text: message.content,
-                            status: .active
+                            status: .active,
+                            metadata: message.metadata
                         )
                         self.state.aiSteps.append(step)
                         self.state.activeHighlightId = step.id

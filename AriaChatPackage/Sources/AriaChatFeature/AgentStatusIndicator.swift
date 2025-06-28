@@ -8,17 +8,20 @@ struct AgentStatusIndicator: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        if steps.isEmpty {
+        // Filter steps to show only those visible in main chat
+        let visibleSteps = steps.filter { $0.isVisibleInMainChat }
+        
+        if visibleSteps.isEmpty {
             EmptyView()
         } else {
             VStack(spacing: 10) { // Matches React's space-y-2.5
-                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                ForEach(Array(visibleSteps.enumerated()), id: \.element.id) { index, step in
                     stepView(for: step)
                         .slideUpFade(isVisible: true)
                         .animation(
                             AnimationSystem.slideUpFade
                                 .delay(Double(index) * 0.05), // Stagger for new items
-                            value: steps.count
+                            value: visibleSteps.count
                         )
                 }
             }
@@ -93,7 +96,8 @@ struct AgentStatusIndicator: View {
                 // Vertical connector line for indented steps
                 if step.isIndented, let stepIndex = steps.firstIndex(where: { $0.id == step.id }), stepIndex > 0 {
                     let previousStep = steps[stepIndex - 1]
-                    if previousStep.type != .userMessage && previousStep.type != .response {
+                    // Check if previous step would be visible in main chat
+                    if previousStep.isVisibleInMainChat && previousStep.type != .userMessage && previousStep.type != .response {
                         Rectangle()
                             .fill(colorScheme == .dark ? Color(white: 0.4).opacity(0.3) : Color.gray.opacity(0.3)) // neutral-400/30 or neutral-600/30
                             .frame(width: 1, height: 35) // Connect from previous step

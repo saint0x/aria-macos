@@ -23,6 +23,12 @@ struct EnhancedStep: Identifiable {
     let timestamp: Date = Date()
     var toolName: String?
     var isIndented: Bool = false
+    var metadata: MessageMetadata?
+    
+    /// Computed property to determine if this step should be visible in the main chat
+    var isVisibleInMainChat: Bool {
+        MessageFilterUtils.isVisibleInMainChat(self)
+    }
 }
 
 // MARK: - Menu Items

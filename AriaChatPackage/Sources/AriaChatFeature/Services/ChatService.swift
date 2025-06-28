@@ -116,7 +116,8 @@ public class ChatService: ObservableObject {
                 let msg = Message(
                     id: eventData.id,
                     role: mapStringToMessageRole(eventData.role),
-                    content: eventData.content
+                    content: eventData.content,
+                    metadata: eventData.metadata
                 )
                 onTurnOutput(.message(msg))
             }
@@ -214,7 +215,8 @@ public class ChatService: ObservableObject {
         onTurnOutput(.message(Message(
             id: UUID().uuidString,
             role: .thought,
-            content: "Analyzing your request..."
+            content: "Analyzing your request...",
+            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "status")
         )))
         
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
@@ -259,6 +261,7 @@ public struct Message: Sendable {
     public let id: String
     public let role: MessageRole
     public let content: String
+    public let metadata: MessageMetadata?
 }
 
 public struct ToolCall: Sendable {

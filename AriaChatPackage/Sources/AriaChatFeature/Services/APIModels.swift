@@ -46,12 +46,19 @@ public struct ExecuteTurnRequest: Codable, Sendable {
 
 // MARK: - SSE Event Models
 
+public struct MessageMetadata: Codable, Sendable {
+    public let isStatus: Bool
+    public let isFinal: Bool
+    public let messageType: String
+}
+
 public struct SSEMessageEvent: Codable, Sendable {
     public let type: String
     public let id: String
     public let role: String
     public let content: String
     public let createdAt: String
+    public let metadata: MessageMetadata?
 }
 
 public struct SSEToolCallEvent: Codable, Sendable {
