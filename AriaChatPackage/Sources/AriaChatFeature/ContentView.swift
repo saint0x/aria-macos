@@ -87,10 +87,11 @@ public struct ContentView: View {
         connectionStatus = "Connecting..."
         do {
             print("DEBUG: Testing connection...")
-            let connectionManager = await GRPCConnectionManager.shared
-            try await connectionManager.connect()
-            connectionStatus = "Connected to gRPC"
-            print("DEBUG: Connection successful")
+            // Test with a simple session creation
+            let sessionManager = SessionManager.shared
+            let sessionId = try await sessionManager.createSession()
+            connectionStatus = "Connected! Session: \(sessionId.prefix(8))..."
+            print("DEBUG: Connection successful with session: \(sessionId)")
         } catch {
             connectionStatus = "Failed: \(error.localizedDescription)"
             print("DEBUG: Connection failed: \(error)")

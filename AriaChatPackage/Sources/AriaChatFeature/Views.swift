@@ -29,10 +29,10 @@ struct TaskListView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(taskManager.tasks, id: \.id) { protoTask in
+                        ForEach(taskManager.tasks, id: \.id) { task in
                             TaskRow(
-                                task: convertProtoTaskToAriaTask(protoTask),
-                                onSelect: { onTaskSelect(convertProtoTaskToAriaTask(protoTask)) }
+                                task: convertTaskResponseToAriaTask(task),
+                                onSelect: { onTaskSelect(convertTaskResponseToAriaTask(task)) }
                             )
                         }
                         
@@ -66,12 +66,6 @@ struct TaskListView: View {
                     isInitialLoad = false
                     print("TaskListView: Starting to load tasks...")
                     do {
-                        // First ensure we're connected
-                        let connectionManager = await GRPCConnectionManager.shared
-                        print("TaskListView: Got connection manager")
-                        try await connectionManager.connect()
-                        print("TaskListView: Connected to gRPC")
-                        
                         // Now list tasks
                         try await taskManager.listTasks(refresh: true)
                         print("TaskListView: Listed tasks successfully")
@@ -83,13 +77,13 @@ struct TaskListView: View {
         }
     }
     
-    private func convertProtoTaskToAriaTask(_ protoTask: Aria_Task) -> AriaTask {
+    private func convertTaskResponseToAriaTask(_ taskResponse: TaskResponse) -> AriaTask {
         AriaTask(
-            id: protoTask.id,
-            title: "Task \(protoTask.id.prefix(8))",
-            detailIdentifier: protoTask.sessionID,
-            status: taskManager.mapTaskStatus(protoTask.status),
-            timestamp: Date(timeIntervalSince1970: protoTask.createdAt.timeIntervalSince1970)
+            id: taskResponse.id,
+            title: "Task \(taskResponse.id.prefix(8))",
+            detailIdentifier: taskResponse.sessionId ?? "",
+            status: taskManager.mapTaskStatus(taskResponse.status),
+            timestamp: taskResponse.createdAt
         )
     }
 }

@@ -360,59 +360,61 @@ public struct GlassmorphicChatbar: View {
         state.processingComplete = false
         
         do {
-            var activeThoughtId: String?
-            var activeToolIds: [String: String] = [:] // toolName -> stepId
+            // Create a simple actor to hold mutable state
+            let turnState = TurnState()
             
             try await state.chatService.executeTurn(input: input) { event in
-                switch event {
-                case .message(let message):
-                    let step = EnhancedStep(
-                        id: "msg-\(message.id)",
-                        type: self.mapMessageRoleToStepType(message.role),
-                        text: message.content,
-                        status: .active
-                    )
-                    self.state.aiSteps.append(step)
-                    self.state.activeHighlightId = step.id
-                    
-                    if message.role == .thought {
-                        activeThoughtId = step.id
+                Task { @MainActor in
+                    switch event {
+                    case .message(let message):
+                        let step = EnhancedStep(
+                            id: "msg-\(message.id)",
+                            type: self.mapMessageRoleToStepType(message.role),
+                            text: message.content,
+                            status: .active
+                        )
+                        self.state.aiSteps.append(step)
+                        self.state.activeHighlightId = step.id
+                        
+                        if message.role == .thought {
+                            await turnState.setActiveThoughtId(step.id)
+                        }
+                        
+                    case .toolCall(let toolCall):
+                        let step = EnhancedStep(
+                            id: "tool-\(toolCall.id)",
+                            type: .tool,
+                            text: toolCall.toolName,
+                            status: .active,
+                            toolName: toolCall.toolName,
+                            isIndented: true
+                        )
+                        self.state.aiSteps.append(step)
+                        await turnState.setToolId(toolCall.toolName, stepId: step.id)
+                        
+                    case .toolResult(let toolResult):
+                        // Update the corresponding tool step
+                        if let stepId = await turnState.getToolId(toolResult.toolName),
+                           let index = self.state.aiSteps.firstIndex(where: { $0.id == stepId }) {
+                            self.state.aiSteps[index].status = toolResult.success ? .completed : .failed
+                        }
+                        
+                    case .finalResponse(let response):
+                        // Complete any active thought
+                        if let thoughtId = await turnState.getActiveThoughtId(),
+                           let index = self.state.aiSteps.firstIndex(where: { $0.id == thoughtId }) {
+                            self.state.aiSteps[index].status = .completed
+                        }
+                        
+                        let responseStep = EnhancedStep(
+                            id: "response-\(UUID().uuidString)",
+                            type: .response,
+                            text: response,
+                            status: .completed
+                        )
+                        self.state.aiSteps.append(responseStep)
+                        self.state.activeHighlightId = responseStep.id
                     }
-                    
-                case .toolCall(let toolCall):
-                    let step = EnhancedStep(
-                        id: "tool-\(toolCall.id)",
-                        type: .tool,
-                        text: toolCall.toolName,
-                        status: .active,
-                        toolName: toolCall.toolName,
-                        isIndented: true
-                    )
-                    self.state.aiSteps.append(step)
-                    activeToolIds[toolCall.toolName] = step.id
-                    
-                case .toolResult(let toolResult):
-                    // Update the corresponding tool step
-                    if let stepId = activeToolIds[toolResult.toolName],
-                       let index = self.state.aiSteps.firstIndex(where: { $0.id == stepId }) {
-                        self.state.aiSteps[index].status = toolResult.success ? .completed : .failed
-                    }
-                    
-                case .finalResponse(let response):
-                    // Complete any active thought
-                    if let thoughtId = activeThoughtId,
-                       let index = self.state.aiSteps.firstIndex(where: { $0.id == thoughtId }) {
-                        self.state.aiSteps[index].status = .completed
-                    }
-                    
-                    let responseStep = EnhancedStep(
-                        id: "response-\(UUID().uuidString)",
-                        type: .response,
-                        text: response,
-                        status: .completed
-                    )
-                    self.state.aiSteps.append(responseStep)
-                    self.state.activeHighlightId = responseStep.id
                 }
             }
         } catch {
@@ -552,5 +554,28 @@ struct VisualEffectView: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.material = material
         nsView.blendingMode = blendingMode
+    }
+}
+
+// MARK: - Turn State Actor
+
+private actor TurnState {
+    private var activeThoughtId: String?
+    private var activeToolIds: [String: String] = [:] // toolName -> stepId
+    
+    func setActiveThoughtId(_ id: String) {
+        activeThoughtId = id
+    }
+    
+    func getActiveThoughtId() -> String? {
+        return activeThoughtId
+    }
+    
+    func setToolId(_ toolName: String, stepId: String) {
+        activeToolIds[toolName] = stepId
+    }
+    
+    func getToolId(_ toolName: String) -> String? {
+        return activeToolIds[toolName]
     }
 }

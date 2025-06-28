@@ -8,10 +8,11 @@ public class SessionManager: ObservableObject {
     public static let shared = SessionManager()
     
     @Published public private(set) var currentSessionId: String?
+    @Published public private(set) var currentSession: SessionResponse?
     @Published public private(set) var isCreatingSession = false
     @Published public private(set) var sessionError: Error?
     
-    private let client = AriaRuntimeClient.shared
+    private let apiClient = RESTAPIClient.shared
     
     private init() {}
     
@@ -26,15 +27,20 @@ public class SessionManager: ObservableObject {
         
         do {
             print("SessionManager: Creating session...")
-            let sessionClient = try await client.makeSessionServiceClient()
-            print("SessionManager: Got session client")
-            let request = Aria_CreateSessionRequest()
-            print("SessionManager: Sending CreateSession request...")
-            let call = sessionClient.createSession(request)
-            let response = try await call.response.get()
+            
+            let request = CreateSessionRequest()
+            
+            print("SessionManager: Sending POST request to create session...")
+            let response = try await apiClient.post(
+                APIEndpoints.createSession,
+                body: request,
+                type: SessionResponse.self
+            )
+            
             print("SessionManager: Got response with session ID: \(response.id)")
             
             currentSessionId = response.id
+            currentSession = response
             return response.id
         } catch {
             print("SessionManager: Error creating session: \(error)")
@@ -52,9 +58,35 @@ public class SessionManager: ObservableObject {
         return try await createSession()
     }
     
+    /// Get session details
+    public func getSession(_ sessionId: String) async throws -> SessionResponse {
+        do {
+            print("SessionManager: Getting session \(sessionId)...")
+            
+            let response = try await apiClient.get(
+                APIEndpoints.getSession(sessionId),
+                type: SessionResponse.self
+            )
+            
+            print("SessionManager: Got session details")
+            
+            // Update current session if it matches
+            if sessionId == currentSessionId {
+                currentSession = response
+            }
+            
+            return response
+        } catch {
+            print("SessionManager: Error getting session: \(error)")
+            sessionError = error
+            throw error
+        }
+    }
+    
     /// Clears the current session
     public func clearSession() {
         currentSessionId = nil
+        currentSession = nil
         sessionError = nil
     }
 }

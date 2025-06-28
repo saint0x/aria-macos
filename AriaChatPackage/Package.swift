@@ -14,18 +14,14 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.23.0"),
-        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.25.0")
+        // No external dependencies needed - using native URLSession for networking
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
             name: "AriaChatFeature",
-            dependencies: [
-                .product(name: "GRPC", package: "grpc-swift"),
-                .product(name: "SwiftProtobuf", package: "swift-protobuf")
-            ]
+            dependencies: []
         ),
         .testTarget(
             name: "AriaChatFeatureTests",

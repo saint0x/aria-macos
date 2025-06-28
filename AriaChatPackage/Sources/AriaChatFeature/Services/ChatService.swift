@@ -1,9 +1,8 @@
 import Foundation
 import SwiftUI
 import Combine
-import GRPC
 
-/// Manages chat interactions and AI responses via AriaRuntime.ExecuteTurn
+/// Manages chat interactions and AI responses via REST API ExecuteTurn
 @MainActor
 public class ChatService: ObservableObject {
     public static let shared = ChatService()
@@ -12,11 +11,15 @@ public class ChatService: ObservableObject {
     @Published public private(set) var processingComplete = false
     @Published public private(set) var chatError: Error?
     
-    private let client = AriaRuntimeClient.shared
+    private let apiClient = RESTAPIClient.shared
+    private let streamingClient = StreamingClient()
     private let sessionManager = SessionManager.shared
     
+    // Active stream handle
+    private var currentStreamHandle: StreamHandle?
+    
     // Callback for handling turn output events
-    public typealias TurnOutputHandler = (TurnOutputEvent) -> Void
+    public typealias TurnOutputHandler = @Sendable (TurnOutputEvent) -> Void
     
     private init() {}
     
@@ -31,6 +34,12 @@ public class ChatService: ObservableObject {
             processingComplete = true
         }
         
+        // Cancel any existing stream
+        if let handle = currentStreamHandle {
+            await handle.cancel()
+            currentStreamHandle = nil
+        }
+        
         // Get current session ID
         let sessionId: String
         
@@ -42,82 +51,161 @@ public class ChatService: ObservableObject {
         }
         
         do {
-            // Create the gRPC client
-            let sessionClient = try await client.makeSessionServiceClient()
-            var request = Aria_ExecuteTurnRequest()
-            request.sessionID = sessionId
-            request.input = input
+            // Prepare request
+            let request = ExecuteTurnRequest(input: input)
             
-            // Stream the response using callback API
-            let call = sessionClient.executeTurn(request) { [weak self] output in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    switch output.event {
-                    case .message(let message):
-                        let msg = Message(
-                            id: message.id,
-                            role: self.mapProtoMessageRole(message.role),
-                            content: message.content
-                        )
-                        onTurnOutput(.message(msg))
-                        
-                    case .toolCall(let toolCall):
-                        let call = ToolCall(
-                            id: UUID().uuidString,
-                            toolName: toolCall.toolName,
-                            parameters: ["json": toolCall.parametersJson]
-                        )
-                        onTurnOutput(.toolCall(call))
-                        
-                    case .toolResult(let toolResult):
-                        let result = ToolResult(
-                            toolCallId: UUID().uuidString,
-                            toolName: toolResult.toolName,
-                            output: toolResult.resultJson,
-                            success: toolResult.success,
-                            error: toolResult.errorMessage
-                        )
-                        onTurnOutput(.toolResult(result))
-                        
-                    case .finalResponse(let response):
-                        onTurnOutput(.finalResponse(response))
-                        
-                    case .none:
-                        break
+            // Build SSE URL
+            let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "localhost"
+            let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? "50052"
+            let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "http"
+            let urlString = "\(scheme)://\(host):\(port)/api/v1\(APIEndpoints.executeTurn(sessionId))"
+            
+            guard let url = URL(string: urlString) else {
+                throw APIError.invalidResponse
+            }
+            
+            // Convert request to JSON for POST body
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            let jsonData = try encoder.encode(request)
+            
+            var urlRequest = URLRequest(url: url)
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = jsonData
+            
+            print("ChatService: Starting SSE stream for turn execution...")
+            
+            // Start SSE stream
+            currentStreamHandle = await streamingClient.streamWithRequest(
+                request: urlRequest,
+                onEvent: { [weak self] event in
+                    await self?.handleStreamEvent(event, onTurnOutput: onTurnOutput)
+                },
+                onError: { [weak self] error in
+                    Task { @MainActor in
+                        self?.chatError = error
+                        print("ChatService: Stream error: \(error)")
                     }
                 }
-            }
+            )
             
-            // Wait for the call to complete
-            _ = try await call.status.get()
+            // For SSE, we don't wait for completion as it's handled by the stream
+            // The stream will continue until server closes it
             
         } catch {
-            // If gRPC fails (e.g., server not running), fall back to mock
-            if (error as? GRPCStatus)?.code == .unavailable {
-                print("gRPC server unavailable, using mock response")
-                await simulateStreamingResponse(input: input, sessionId: sessionId, onTurnOutput: onTurnOutput)
-            } else {
-                chatError = error
-                throw error
-            }
+            // If API fails, fall back to mock
+            print("API request failed: \(error), using mock response")
+            await simulateStreamingResponse(input: input, sessionId: sessionId, onTurnOutput: onTurnOutput)
         }
     }
     
-    private func mapProtoMessageRole(_ role: Aria_MessageRole) -> MessageRole {
-        switch role {
-        case .user:
+    private func handleStreamEvent(_ event: SSEEvent, onTurnOutput: @escaping TurnOutputHandler) async {
+        print("ChatService: Received SSE event type: \(event.type)")
+        
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        
+        // Parse the event based on type
+        switch event.type {
+        case "message":
+            if let data = event.data.data(using: .utf8),
+               let eventData = try? decoder.decode(SSEMessageEvent.self, from: data) {
+                
+                let msg = Message(
+                    id: eventData.id,
+                    role: mapStringToMessageRole(eventData.role),
+                    content: eventData.content
+                )
+                onTurnOutput(.message(msg))
+            }
+            
+        case "tool_call":
+            if let data = event.data.data(using: .utf8),
+               let eventData = try? decoder.decode(SSEToolCallEvent.self, from: data) {
+                
+                // Convert AnyCodable to string parameters
+                var params: [String: String] = [:]
+                for (key, value) in eventData.parametersJson {
+                    // AnyCodable wraps the actual value - we need to encode it as JSON
+                    if let jsonData = try? JSONEncoder().encode(value),
+                       let jsonString = String(data: jsonData, encoding: .utf8) {
+                        params[key] = jsonString
+                    }
+                }
+                
+                let call = ToolCall(
+                    id: UUID().uuidString, // Generate ID since it's not in the event
+                    toolName: eventData.toolName,
+                    parameters: params
+                )
+                onTurnOutput(.toolCall(call))
+            }
+            
+        case "tool_result":
+            if let data = event.data.data(using: .utf8),
+               let eventData = try? decoder.decode(SSEToolResultEvent.self, from: data) {
+                
+                // Convert result JSON to string
+                let output: String
+                if let jsonData = try? JSONEncoder().encode(eventData.resultJson),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    output = jsonString
+                } else {
+                    output = "{}"
+                }
+                
+                let result = ToolResult(
+                    toolCallId: UUID().uuidString, // Generate ID since it's not in the event
+                    toolName: eventData.toolName,
+                    output: output,
+                    success: eventData.success,
+                    error: nil
+                )
+                onTurnOutput(.toolResult(result))
+            }
+            
+        case "final_response":
+            if let data = event.data.data(using: .utf8),
+               let eventData = try? decoder.decode(SSEFinalResponseEvent.self, from: data) {
+                
+                onTurnOutput(.finalResponse(eventData.content))
+            }
+            
+        case "error":
+            print("ChatService: Received error event: \(event.data)")
+            
+        default:
+            print("ChatService: Unknown event type: \(event.type)")
+        }
+    }
+    
+    private func mapStringToMessageRole(_ role: String) -> MessageRole {
+        switch role.lowercased() {
+        case "user":
             return .user
-        case .assistant:
+        case "assistant":
             return .assistant
-        case .tool:
+        case "tool":
             return .tool
-        case .system:
+        case "system":
             return .system
-        case .UNRECOGNIZED:
-            return .assistant
+        case "thought":
+            return .thought
         default:
             return .assistant
         }
+    }
+    
+    /// Cancel the current streaming operation
+    public func cancelCurrentTurn() async {
+        if let handle = currentStreamHandle {
+            await handle.cancel()
+            currentStreamHandle = nil
+        }
+        isProcessing = false
+        processingComplete = true
     }
     
     // Mock implementation that simulates streaming
@@ -158,7 +246,7 @@ public class ChatService: ObservableObject {
 
 // MARK: - Turn Output Events
 
-public enum TurnOutputEvent {
+public enum TurnOutputEvent: Sendable {
     case message(Message)
     case toolCall(ToolCall)
     case toolResult(ToolResult)
@@ -167,19 +255,19 @@ public enum TurnOutputEvent {
 
 // MARK: - Message Types
 
-public struct Message {
+public struct Message: Sendable {
     public let id: String
     public let role: MessageRole
     public let content: String
 }
 
-public struct ToolCall {
+public struct ToolCall: Sendable {
     public let id: String
     public let toolName: String
     public let parameters: [String: String]
 }
 
-public struct ToolResult {
+public struct ToolResult: Sendable {
     public let toolCallId: String
     public let toolName: String
     public let output: String
@@ -188,7 +276,7 @@ public struct ToolResult {
 }
 
 // Message role enum
-public enum MessageRole {
+public enum MessageRole: Sendable {
     case system
     case user
     case assistant
