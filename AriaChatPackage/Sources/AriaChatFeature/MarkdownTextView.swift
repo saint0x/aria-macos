@@ -6,10 +6,10 @@ struct MarkdownTextView: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        // For now, use AttributedString with markdown support
         Text(attributedMarkdown)
             .font(.textSM)
             .foregroundColor(Color.textPrimary(for: colorScheme))
+            .tint(Color.appleBlue) // Color for links
     }
     
     private var attributedMarkdown: AttributedString {
@@ -17,19 +17,41 @@ struct MarkdownTextView: View {
             var attributed = try AttributedString(
                 markdown: text,
                 options: AttributedString.MarkdownParsingOptions(
+                    allowsExtendedAttributes: true,
                     interpretedSyntax: .inlineOnlyPreservingWhitespace
                 )
             )
             
-            // Apply custom styling for inline code
+            // Apply custom styling
             for run in attributed.runs {
-                if let _ = run.attributes.inlinePresentationIntent,
-                   let intent = run.attributes.inlinePresentationIntent,
+                // Handle inline code
+                if let intent = run.attributes.inlinePresentationIntent,
                    intent.contains(.code) {
                     attributed[run.range].font = .system(size: 13, design: .monospaced)
                     attributed[run.range].backgroundColor = colorScheme == .dark ?
                         Color(white: 0.2).opacity(0.5) :
-                        Color(white: 0.9)
+                        Color(white: 0.95)
+                    attributed[run.range].foregroundColor = colorScheme == .dark ?
+                        Color(red: 0.9, green: 0.6, blue: 0.4) : // Orange for dark mode
+                        Color(red: 0.5, green: 0.3, blue: 0.1) // Brown for light mode
+                }
+                
+                // Handle links
+                if run.attributes.link != nil {
+                    attributed[run.range].underlineStyle = .single
+                    attributed[run.range].foregroundColor = Color.appleBlue
+                }
+                
+                // Handle bold
+                if let intent = run.attributes.inlinePresentationIntent,
+                   intent.contains(.stronglyEmphasized) {
+                    attributed[run.range].font = .system(size: 14, weight: .semibold)
+                }
+                
+                // Handle italic
+                if let intent = run.attributes.inlinePresentationIntent,
+                   intent.contains(.emphasized) {
+                    attributed[run.range].font = .system(size: 14).italic()
                 }
             }
             
@@ -63,25 +85,16 @@ struct AdvancedMarkdownView: View {
             ForEach(segments) { segment in
                 switch segment.type {
                 case .text:
-                    Text(segment.content)
-                        .font(.textSM)
-                        .foregroundColor(Color.textPrimary(for: colorScheme))
+                    // Use MarkdownTextView for inline markdown support
+                    MarkdownTextView(text: segment.content)
                         .multilineTextAlignment(.leading)
                         
                 case .codeBlock:
                     CodeBlockView(code: segment.content, language: segment.language)
                         
                 case .inlineCode:
-                    Text(segment.content)
-                        .font(.system(size: 13, design: .monospaced))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(colorScheme == .dark ?
-                                    Color(white: 0.2).opacity(0.5) :
-                                    Color(white: 0.9))
-                        )
+                    // This case is now handled by MarkdownTextView
+                    MarkdownTextView(text: "`\(segment.content)`")
                 }
             }
         }
@@ -89,23 +102,21 @@ struct AdvancedMarkdownView: View {
     
     private func parseMarkdown(_ text: String) -> [MarkdownSegment] {
         var segments: [MarkdownSegment] = []
-        var currentText = text
         
         // Simple parser for code blocks
         let codeBlockPattern = "```(\\w*)\\n([^`]+)```"
-        let inlineCodePattern = "`([^`]+)`"
         
         // First, extract code blocks
         if let regex = try? NSRegularExpression(pattern: codeBlockPattern, options: []) {
-            let matches = regex.matches(in: currentText, range: NSRange(location: 0, length: currentText.count))
+            let matches = regex.matches(in: text, range: NSRange(location: 0, length: text.count))
             
             var lastEnd = 0
             for match in matches {
                 // Add text before code block
                 if lastEnd < match.range.location {
                     let textRange = NSRange(location: lastEnd, length: match.range.location - lastEnd)
-                    if let range = Range(textRange, in: currentText) {
-                        let textContent = String(currentText[range])
+                    if let range = Range(textRange, in: text) {
+                        let textContent = String(text[range])
                         if !textContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             segments.append(MarkdownSegment(type: .text, content: textContent))
                         }
@@ -113,10 +124,10 @@ struct AdvancedMarkdownView: View {
                 }
                 
                 // Add code block
-                if let langRange = Range(match.range(at: 1), in: currentText),
-                   let codeRange = Range(match.range(at: 2), in: currentText) {
-                    let language = String(currentText[langRange])
-                    let code = String(currentText[codeRange])
+                if let langRange = Range(match.range(at: 1), in: text),
+                   let codeRange = Range(match.range(at: 2), in: text) {
+                    let language = String(text[langRange])
+                    let code = String(text[codeRange])
                     segments.append(MarkdownSegment(type: .codeBlock, content: code, language: language))
                 }
                 
@@ -124,8 +135,8 @@ struct AdvancedMarkdownView: View {
             }
             
             // Add remaining text
-            if lastEnd < currentText.count {
-                let remainingText = String(currentText.suffix(from: currentText.index(currentText.startIndex, offsetBy: lastEnd)))
+            if lastEnd < text.count {
+                let remainingText = String(text.suffix(from: text.index(text.startIndex, offsetBy: lastEnd)))
                 if !remainingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     segments.append(MarkdownSegment(type: .text, content: remainingText))
                 }
