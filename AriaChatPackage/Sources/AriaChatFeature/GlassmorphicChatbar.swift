@@ -406,6 +406,12 @@ public struct GlassmorphicChatbar: View {
                     
                     switch event {
                     case .message(let message):
+                        // Skip user messages from events - we already added them when submitting
+                        if message.role == .user {
+                            print("Skipping duplicate user message from event stream")
+                            break
+                        }
+                        
                         // Check if this is an assistant message that should be treated as a response
                         var stepType = self.mapMessageRoleToStepType(message.role)
                         var metadata = message.metadata

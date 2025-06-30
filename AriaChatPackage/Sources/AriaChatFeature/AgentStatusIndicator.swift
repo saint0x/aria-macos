@@ -9,7 +9,7 @@ struct AgentStatusIndicator: View {
     
     var body: some View {
         // Filter steps to show only those visible in main chat
-        let visibleSteps = steps.filter { $0.isVisibleInMainChat }
+        let visibleSteps = MessageVisibilityManager.filterSteps(steps, for: .mainChat)
         
         if visibleSteps.isEmpty {
             EmptyView()
@@ -38,7 +38,7 @@ struct AgentStatusIndicator: View {
     
     @ViewBuilder
     private func stepView(for step: EnhancedStep) -> some View {
-        let isHighlighted = activeHighlightId == step.id
+        let isHighlighted = MessageVisibilityManager.shouldHighlight(step, activeHighlightId: activeHighlightId)
         
         switch step.type {
         case .userMessage:
@@ -89,12 +89,14 @@ struct AgentStatusIndicator: View {
             )
             .contentShape(Rectangle())
             .onTapGesture {
-                onStepClick(step)
+                if MessageVisibilityManager.isClickable(step) {
+                    onStepClick(step)
+                }
             }
             .onHover { hovering in
-                if hovering {
+                if MessageVisibilityManager.isClickable(step) && hovering {
                     NSCursor.pointingHand.push()
-                } else {
+                } else if !hovering {
                     NSCursor.pop()
                 }
             }
@@ -128,24 +130,22 @@ struct AgentStatusIndicator: View {
                     }
                     .frame(width: 24, height: 24) // Container is always 24x24
                     
-                    // Tool text with proper formatting
+                    // Tool text with proper formatting - "used: {toolName}"
                     if let toolName = step.toolName {
-                        Text(toolName)
+                        Text("used: ")
+                            .font(.textXS) // Size 12 for prefix
+                            .foregroundColor(Color.textSecondary(for: colorScheme))
+                        + Text(toolName)
                             .font(.textXS(.medium)) // Size 12 medium for tool name
                             .foregroundColor(step.status == .active ? 
                                 Color.textPrimary(for: colorScheme) : 
                                 Color.textSecondary(for: colorScheme))
-                        + Text(": ")
+                    } else {
+                        Text("used: ")
                             .font(.textXS)
                             .foregroundColor(Color.textSecondary(for: colorScheme))
                         + Text(step.text)
-                            .font(.textXS) // Size 12 for action text
-                            .foregroundColor(step.status == .active ? 
-                                (colorScheme == .dark ? Color.white.opacity(0.9) : Color.black.opacity(0.8)) : 
-                                (colorScheme == .dark ? Color.white.opacity(0.7) : Color.gray.opacity(0.9)))
-                    } else {
-                        Text(step.text)
-                            .font(.textXS) // Size 12 for tools
+                            .font(.textXS(.medium)) // Size 12 medium for tools
                             .foregroundColor(step.status == .active ? 
                                 Color.textPrimary(for: colorScheme) : 
                                 Color.textSecondary(for: colorScheme))
@@ -176,26 +176,28 @@ struct AgentStatusIndicator: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                onStepClick(step)
+                if MessageVisibilityManager.isClickable(step) {
+                    onStepClick(step)
+                }
             }
             .onHover { hovering in
-                if hovering {
+                if MessageVisibilityManager.isClickable(step) && hovering {
                     NSCursor.pointingHand.push()
-                } else {
+                } else if !hovering {
                     NSCursor.pop()
                 }
             }
             
         case .response:
             HStack(alignment: .top, spacing: 8) {
-                statusIcon(for: step)
-                    .frame(width: 16, height: 16)
-                    .padding(.top, 2)
+                // Only show icon if not completed (no checkmarks for responses)
+                if step.status != .completed {
+                    statusIcon(for: step)
+                        .frame(width: 16, height: 16)
+                        .padding(.top, 2)
+                }
                 
-                Text(step.text)
-                    .font(.textSM)
-                    .foregroundColor(Color.textPrimary(for: colorScheme))
-                    .multilineTextAlignment(.leading)
+                AdvancedMarkdownView(text: step.text)
                 
                 Spacer()
             }
@@ -213,12 +215,14 @@ struct AgentStatusIndicator: View {
             )
             .contentShape(Rectangle())
             .onTapGesture {
-                onStepClick(step)
+                if MessageVisibilityManager.isClickable(step) {
+                    onStepClick(step)
+                }
             }
             .onHover { hovering in
-                if hovering {
+                if MessageVisibilityManager.isClickable(step) && hovering {
                     NSCursor.pointingHand.push()
-                } else {
+                } else if !hovering {
                     NSCursor.pop()
                 }
             }
@@ -227,68 +231,27 @@ struct AgentStatusIndicator: View {
     
     @ViewBuilder
     private func statusIcon(for step: EnhancedStep) -> some View {
-        if step.status == .completed {
-            // CheckIcon equivalent
-            Image(systemName: "checkmark")
-                .foregroundColor(Color(red: 34/255, green: 197/255, blue: 94/255).opacity(0.9)) // apple-green-dark/90
-                .font(.system(size: 16, weight: .regular))
-        } else if step.status == .failed {
-            // Failed icon
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(Color(red: 239/255, green: 68/255, blue: 68/255)) // red-500
-                .font(.system(size: 14, weight: .regular))
-        } else {
-            // Active/pending state - show different icons based on type
-            if step.type == .tool {
-                // ZapIcon for tool - with proper colors based on state
-                let toolColor: Color = {
-                    if step.status == .active {
-                        return colorScheme == .dark ? Color.white : Color.black.opacity(0.8) // text-neutral-800 dark:text-neutral-100
-                    } else {
-                        return colorScheme == .dark ? Color(white: 0.6).opacity(0.8) : Color.gray.opacity(0.8) // text-neutral-500/80 dark:text-neutral-400/80
-                    }
-                }()
-                
-                Image(systemName: "bolt.fill")
-                    .foregroundColor(toolColor)
-                    .font(.system(size: 14, weight: .regular))
-            } else if step.type == .thought && (step.text.contains("Synthesizing") || step.text.contains("Processing")) {
-                // Loader for active thoughts
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
-                    .scaleEffect(0.7)
-                    .frame(width: 14, height: 14)
-            } else {
-                // Default dot for thoughts
-                Circle()
-                    .fill(Color(red: 115/255, green: 115/255, blue: 115/255).opacity(0.7)) // neutral-500/70
-                    .frame(width: 8, height: 8)
-            }
+        if let iconConfig = StatusIconProvider.iconConfig(for: step, colorScheme: colorScheme) {
+            Image(systemName: iconConfig.systemName)
+                .foregroundColor(iconConfig.color)
+                .font(.system(size: iconConfig.size, weight: iconConfig.weight))
+        } else if StatusIconProvider.shouldShowProgressIndicator(for: step) {
+            // Loader for active thoughts
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle())
+                .scaleEffect(0.7)
+                .frame(width: 14, height: 14)
+        } else if StatusIconProvider.shouldShowDot(for: step) {
+            // Default dot for thoughts
+            Circle()
+                .fill(Color(red: 115/255, green: 115/255, blue: 115/255).opacity(0.7)) // neutral-500/70
+                .frame(width: 8, height: 8)
         }
     }
     
     @ViewBuilder
     private func spacingView(between current: EnhancedStep, and next: EnhancedStep) -> some View {
-        // Determine spacing based on message types
-        let spacing: CGFloat = {
-            // Group consecutive tool calls with minimal spacing
-            if current.type == .tool && next.type == .tool {
-                return 4
-            }
-            // Group consecutive responses with small spacing
-            else if current.type == .response && next.type == .response {
-                return 6
-            }
-            // Larger spacing between different message types
-            else if current.type != next.type {
-                return 16
-            }
-            // Default spacing
-            else {
-                return 10
-            }
-        }()
-        
+        let spacing = MessageVisibilityManager.spacing(between: current, and: next)
         Spacer()
             .frame(height: spacing)
     }

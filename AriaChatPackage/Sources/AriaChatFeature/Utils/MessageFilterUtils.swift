@@ -35,11 +35,17 @@ enum MessageFilterUtils {
             }
             
             // Hide summary messages - more comprehensive patterns
-            if lowerText.contains("initiated") || lowerText.contains("performed") ||
-               lowerText.contains("executed") || lowerText.contains("search was conducted") ||
-               lowerText.contains("based on the user's request") ||
-               lowerText.contains("providing a selection") ||
-               lowerText.contains("the assistant") {
+            let summaryPatterns = [
+                "initiated", "performed", "executed", "search was conducted",
+                "based on the user's request", "providing a selection",
+                "the assistant", "i've", "we've", "has been", "have been",
+                "was completed", "were completed", "successfully completed",
+                "carried out", "undertaken", "accomplished",
+                "the following", "here's what", "to summarize",
+                "in summary", "overall", "in conclusion"
+            ]
+            
+            if summaryPatterns.contains(where: { lowerText.contains($0) }) {
                 return false
             }
             
@@ -51,8 +57,16 @@ enum MessageFilterUtils {
             return true
         }
         
-        // Tool calls are visible when indented
+        // Tool calls are visible when indented, but hide raw JSON responses
         if step.type == .tool && step.isIndented {
+            // Hide if the tool result contains raw JSON
+            if let result = step.toolResult {
+                let trimmedResult = result.trimmingCharacters(in: .whitespacesAndNewlines)
+                if (trimmedResult.hasPrefix("{") && trimmedResult.hasSuffix("}")) ||
+                   (trimmedResult.hasPrefix("[") && trimmedResult.hasSuffix("]")) {
+                    return false
+                }
+            }
             return true
         }
         
@@ -77,12 +91,19 @@ enum MessageFilterUtils {
             }
             
             // Hide executing messages and summaries
+            let summaryPatterns = [
+                "initiated", "performed", "executed", "search was conducted",
+                "based on the user's request", "providing a selection",
+                "the assistant", "i've", "we've", "has been", "have been",
+                "was completed", "were completed", "successfully completed",
+                "carried out", "undertaken", "accomplished",
+                "the following", "here's what", "to summarize",
+                "in summary", "overall", "in conclusion"
+            ]
+            
             if step.text.contains("Executing task:") || 
                step.text.contains("Executed tool") ||
-               lowerText.contains("initiated") || 
-               lowerText.contains("performed") ||
-               lowerText.contains("the assistant") ||
-               lowerText.contains("search was conducted") {
+               summaryPatterns.contains(where: { lowerText.contains($0) }) {
                 return false
             }
             
