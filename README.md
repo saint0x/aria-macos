@@ -7,7 +7,3 @@ Beautiful native macOS application for the Aria agentic runtime.
 ![Aria Chat Interface](assets/1.png)
 
 ![Code Generation](assets/2.png)
-
-![Task Execution](assets/3.png)
-
-![Task Views](assets/4.png)
