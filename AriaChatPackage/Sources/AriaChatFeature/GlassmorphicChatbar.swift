@@ -412,32 +412,16 @@ public struct GlassmorphicChatbar: View {
                             break
                         }
                         
-                        // Check if this is an assistant message that should be treated as a response
-                        var stepType = self.mapMessageRoleToStepType(message.role)
-                        var metadata = message.metadata
-                        
-                        // If it's an assistant message without metadata, check if it looks like a final response
-                        if message.role == .assistant && metadata == nil {
-                            // Simple heuristic: if it doesn't start with status-like text, treat it as a response
-                            let statusPrefixes = ["Understood", "Executing", "Processing", "Analyzing", "Working on", "Let me"]
-                            let looksLikeStatus = statusPrefixes.contains { message.content.hasPrefix($0) }
-                            
-                            if !looksLikeStatus {
-                                stepType = .response
-                                metadata = MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
-                            }
-                        }
-                        
                         let step = EnhancedStep(
                             id: "msg-\(message.id)",
-                            type: stepType,
+                            type: self.mapMessageRoleToStepType(message.role),
                             text: message.content,
                             status: .active,
-                            metadata: metadata
+                            metadata: message.metadata
                         )
                         
                         // Debug logging for metadata
-                        if let meta = metadata {
+                        if let meta = message.metadata {
                             print("Message: '\(message.content.prefix(50))...' - Metadata: isStatus=\(meta.isStatus), isFinal=\(meta.isFinal), messageType=\(meta.messageType)")
                         } else {
                             print("Message: '\(message.content.prefix(50))...' - No metadata, role=\(message.role)")

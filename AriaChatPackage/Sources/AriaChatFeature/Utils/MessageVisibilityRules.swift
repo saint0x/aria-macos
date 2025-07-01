@@ -32,36 +32,15 @@ enum MessageVisibilityRules {
             return VisibilityDecision(isVisible: true, reason: "Indented tool call")
         }
         
-        // Rule 3: Final responses are ALWAYS visible
+        // Rule 3: Only show responses from finalResponse event
         if step.type == .response {
-            // Check metadata first (most reliable)
-            if let metadata = step.metadata {
-                if metadata.isFinal && metadata.messageType == "response" {
-                    return VisibilityDecision(isVisible: true, reason: "Final response (metadata)")
-                }
-                if metadata.messageType == "acknowledgment" {
-                    return VisibilityDecision(isVisible: true, reason: "Acknowledgment")
-                }
-                if metadata.isStatus || metadata.messageType == "synthesis" || metadata.messageType == "summary" {
-                    return VisibilityDecision(isVisible: false, reason: "Status/summary message")
-                }
+            // Only show if this came from the finalResponse event (ID starts with "response-")
+            if step.id.hasPrefix("response-") {
+                return VisibilityDecision(isVisible: true, reason: "Final response event")
             }
             
-            // For responses without metadata, check content
-            let lowerText = step.text.lowercased()
-            
-            // Hide if it looks like JSON
-            if looksLikeJSON(step.text) {
-                return VisibilityDecision(isVisible: false, reason: "JSON content")
-            }
-            
-            // Hide if it's a summary pattern
-            if containsSummaryPattern(lowerText) {
-                return VisibilityDecision(isVisible: false, reason: "Summary pattern")
-            }
-            
-            // Default: show responses that made it this far
-            return VisibilityDecision(isVisible: true, reason: "Response (no metadata)")
+            // Hide all other responses (from message events with "msg-" prefix)
+            return VisibilityDecision(isVisible: false, reason: "Message event response (not final)")
         }
         
         // Rule 4: Everything else is hidden
