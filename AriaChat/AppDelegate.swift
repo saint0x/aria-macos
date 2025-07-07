@@ -22,6 +22,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: CustomFloatingWindow!
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize authentication on app launch
+        Task {
+            await AuthenticationManager.shared.initialize()
+        }
+        
+        // Register URL scheme with system
+        URLSchemeHandler.shared.registerURLScheme()
+        
+        // Register URL scheme handler
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
         // Create custom window with large canvas size
         let contentRect = NSRect(x: 0, y: 0, width: 2000, height: 1200)
         
@@ -67,5 +82,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+    
+    // MARK: - URL Scheme Handler
+    
+    @MainActor @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: urlString) else {
+            print("AppDelegate: Invalid URL received")
+            return
+        }
+        
+        // Delegate to URL scheme handler
+        URLSchemeHandler.shared.handleURL(url)
     }
 }

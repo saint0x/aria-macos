@@ -24,6 +24,11 @@ public actor StreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         
+        // Add auth headers if available
+        Task {
+            await addAuthHeaders(&request)
+        }
+        
         let task = session.dataTask(with: request) { data, response, error in
             Task {
                 if let error = error {
@@ -55,6 +60,11 @@ public actor StreamingClient {
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        
+        // Add auth headers if available
+        Task {
+            await addAuthHeaders(&request)
+        }
         
         return streamWithRequest(request: request, onEvent: onEvent, onError: onError)
     }
@@ -133,6 +143,13 @@ public actor StreamingClient {
             task.cancel()
         }
         activeStreams.removeAll()
+    }
+    
+    private func addAuthHeaders(_ request: inout URLRequest) async {
+        // Add authentication header if available
+        if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
     }
 }
 
