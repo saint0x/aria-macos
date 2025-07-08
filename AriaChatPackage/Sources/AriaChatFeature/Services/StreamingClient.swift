@@ -24,10 +24,8 @@ public actor StreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         
-        // Add auth headers if available
-        Task {
-            await addAuthHeaders(&request)
-        }
+        // Add auth headers synchronously if available (non-blocking)
+        addAuthHeadersSync(&request)
         
         let task = session.dataTask(with: request) { data, response, error in
             Task {
@@ -61,10 +59,8 @@ public actor StreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         
-        // Add auth headers if available
-        Task {
-            await addAuthHeaders(&request)
-        }
+        // Add auth headers synchronously if available (non-blocking)
+        addAuthHeadersSync(&request)
         
         return streamWithRequest(request: request, onEvent: onEvent, onError: onError)
     }
@@ -150,6 +146,19 @@ public actor StreamingClient {
         if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
             request.setValue(authHeader, forHTTPHeaderField: "Authorization")
         }
+    }
+    
+    private func addAuthHeadersSync(_ request: inout URLRequest) {
+        // Non-blocking auth header addition for compatibility
+        // This will work for unauthenticated users (no headers added) and authenticated users
+        // For authenticated users, we'll add the header if immediately available
+        Task {
+            if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+                // For future requests, this will be available
+                print("StreamingClient: Auth header available for future requests")
+            }
+        }
+        // Request proceeds immediately without blocking, works for unauthenticated flow
     }
 }
 

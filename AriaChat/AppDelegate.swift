@@ -60,19 +60,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         
-        // Create SwiftUI content
-        let contentView = ZStack {
-            // Large transparent canvas for complete freedom
-            Color.clear
-                .frame(width: 2000, height: 1200)
-            
-            // Chatbar positioned in center
-            GlassmorphicChatbar()
-        }
-        .frame(width: 2000, height: 1200)
-        .environmentObject(BlurSettings.shared)
-        .environmentObject(ThemeSettings.shared)
-        .preferredColorScheme(ThemeSettings.shared.colorScheme)
+        // Create SwiftUI content with conditional rendering
+        let contentView = AriaRootView()
+            .frame(width: 2000, height: 1200)
+            .environmentObject(BlurSettings.shared)
+            .environmentObject(ThemeSettings.shared)
+            .environmentObject(AuthenticationManager.shared)
+            .preferredColorScheme(ThemeSettings.shared.colorScheme)
         
         // Set content
         window.contentView = NSHostingView(rootView: contentView)

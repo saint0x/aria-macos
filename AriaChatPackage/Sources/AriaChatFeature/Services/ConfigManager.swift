@@ -91,8 +91,8 @@ public struct APIConfig: Codable {
     public var uploadEndpoint: String
     
     public init() {
-        self.baseUrl = "https://api.aria.dev"
-        self.wsUrl = "wss://api.aria.dev"
+        self.baseUrl = "https://api.whoisaria.co"
+        self.wsUrl = "wss://api.whoisaria.co"
         self.uploadEndpoint = "/api/v1/bundles/upload"
     }
 }
@@ -222,7 +222,7 @@ public class ConfigManager: ObservableObject {
     /// Get auth login URL
     public func getAuthLoginURL() -> URL? {
         guard let magicNumber = getMagicNumber() else { return nil }
-        return URL(string: "https://app.aria.dev/auth/login?magic=\(magicNumber)")
+        return URL(string: "https://whoisaria.co/auth/login?magic=\(magicNumber)")
     }
     
     // MARK: - Private Methods
