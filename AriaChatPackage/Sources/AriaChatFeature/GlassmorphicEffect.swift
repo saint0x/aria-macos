@@ -15,7 +15,7 @@ struct GlassmorphicModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                // Use the custom glassmorphic view that properly implements blur
+                // Use native NSVisualEffectView for blur intensity control
                 GlassmorphicBackground(cornerRadius: cornerRadius, blurIntensity: blurSettings.blurIntensity)
             )
             .overlay(
@@ -28,45 +28,44 @@ struct GlassmorphicModifier: ViewModifier {
 
 struct GlassmorphicBackground: NSViewRepresentable {
     let cornerRadius: CGFloat
-    let blurIntensity: CGFloat
+    let blurIntensity: CGFloat  // 0 = transparent, higher = more opaque
     @Environment(\.colorScheme) var colorScheme
     
     func makeNSView(context: Context) -> NSView {
         let containerView = NSView()
         containerView.wantsLayer = true
         
-        // Create custom blur effect view that supports dynamic blur radius
-        let blurView = CustomBlurView()
-        blurView.blurRadius = blurIntensity
-        blurView.wantsLayer = true
-        blurView.layer?.cornerRadius = cornerRadius
-        blurView.layer?.masksToBounds = true
+        // Create NSVisualEffectView for native macOS blur
+        let effectView = NSVisualEffectView()
+        effectView.material = .contentBackground
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = cornerRadius
+        effectView.layer?.masksToBounds = true
         
-        // Create overlay view for glassmorphic tint
+        // Create overlay view for additional styling
         let overlayView = NSView()
         overlayView.wantsLayer = true
         overlayView.layer?.cornerRadius = cornerRadius
         overlayView.layer?.masksToBounds = true
         
-        // Set the tint color based on color scheme
-        let tintColor = colorScheme == .dark
-            ? NSColor(red: 38/255, green: 38/255, blue: 38/255, alpha: 0.3)
-            : NSColor(red: 1, green: 1, blue: 1, alpha: 0.3)
-        overlayView.layer?.backgroundColor = tintColor.cgColor
+        // Update blur intensity and tint
+        updateBlurIntensity(effectView: effectView, overlayView: overlayView)
         
         // Add subviews
-        containerView.addSubview(blurView)
+        containerView.addSubview(effectView)
         containerView.addSubview(overlayView)
         
         // Setup constraints
-        blurView.translatesAutoresizingMaskIntoConstraints = false
+        effectView.translatesAutoresizingMaskIntoConstraints = false
         overlayView.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            blurView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            blurView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            blurView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            effectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             
             overlayView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             overlayView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
@@ -77,18 +76,24 @@ struct GlassmorphicBackground: NSViewRepresentable {
         return containerView
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {
-        // Update blur intensity
-        if let blurView = nsView.subviews.first as? CustomBlurView {
-            blurView.blurRadius = blurIntensity
-        }
+    private func updateBlurIntensity(effectView: NSVisualEffectView, overlayView: NSView) {
+        // Control blur intensity: 0 = transparent, higher = more opaque
+        let normalizedIntensity = min(max(blurIntensity / 40.0, 0.0), 1.0)  // Normalize to 0-1
+        effectView.alphaValue = normalizedIntensity
         
-        // Update tint color if color scheme changes
-        if let overlayView = nsView.subviews.last {
-            let tintColor = colorScheme == .dark
-                ? NSColor(red: 38/255, green: 38/255, blue: 38/255, alpha: 0.3)
-                : NSColor(red: 1, green: 1, blue: 1, alpha: 0.3)
-            overlayView.layer?.backgroundColor = tintColor.cgColor
+        // Adjust overlay based on blur intensity and color scheme
+        let overlayAlpha = normalizedIntensity * 0.3  // Base overlay opacity
+        let tintColor = colorScheme == .dark
+            ? NSColor(red: 38/255, green: 38/255, blue: 38/255, alpha: overlayAlpha)
+            : NSColor(red: 1, green: 1, blue: 1, alpha: overlayAlpha)
+        overlayView.layer?.backgroundColor = tintColor.cgColor
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // Update blur intensity and appearance
+        if let effectView = nsView.subviews.first as? NSVisualEffectView,
+           let overlayView = nsView.subviews.last {
+            updateBlurIntensity(effectView: effectView, overlayView: overlayView)
         }
     }
 }

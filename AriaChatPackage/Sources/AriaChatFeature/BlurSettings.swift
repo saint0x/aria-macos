@@ -6,7 +6,7 @@ import AppKit
 public final class BlurSettings: ObservableObject {
     public static let shared = BlurSettings()
     
-    @Published public var blurIntensity: CGFloat = 16.0 // Default blur intensity matching React
+    @Published public var blurIntensity: CGFloat = 16.0 // Default blur intensity (0 = transparent, 40 = opaque)
     
     private init() {}
 }

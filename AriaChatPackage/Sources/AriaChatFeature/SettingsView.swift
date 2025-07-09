@@ -233,16 +233,26 @@ struct SettingsView: View {
                 
                 if visualSettingsExpanded {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Backdrop Blur Slider
+                        // Background Blur Slider
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Backdrop Blur")
+                                Text("Background Blur")
                                     .font(.textSM)
                                     .foregroundColor(Color.textSecondary(for: colorScheme))
                                 Spacer()
-                                Text("\(Int(blurSettings.blurIntensity))px")
+                                Text("\(Int(blurSettings.blurIntensity))")
                                     .font(.monoXS)
                                     .foregroundColor(Color.textPrimary(for: colorScheme))
+                            }
+                            
+                            HStack {
+                                Text("Transparent")
+                                    .font(.caption)
+                                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                                Spacer()
+                                Text("Opaque")
+                                    .font(.caption)
+                                    .foregroundColor(Color.textSecondary(for: colorScheme))
                             }
                             
                             Slider(value: $blurSettings.blurIntensity, in: 0...40)
