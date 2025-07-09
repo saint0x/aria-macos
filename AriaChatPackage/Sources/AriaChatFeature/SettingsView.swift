@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Settings View matching SWIFT.md spec with accordion layout
 struct SettingsView: View {
     @EnvironmentObject var blurSettings: BlurSettings
-    @StateObject private var themeSettings = ThemeSettings.shared
+    @EnvironmentObject var themeSettings: ThemeSettings
     @Environment(\.colorScheme) var colorScheme
     
     // Model Configuration

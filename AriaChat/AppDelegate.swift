@@ -2,6 +2,21 @@ import Cocoa
 import SwiftUI
 import AriaChatFeature
 
+// Reactive theme wrapper that updates color scheme when theme changes
+struct ReactiveThemeWrapper<Content: View>: View {
+    @EnvironmentObject var themeSettings: ThemeSettings
+    let content: Content
+    
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        content
+            .preferredColorScheme(themeSettings.colorScheme)
+    }
+}
+
 class CustomFloatingWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         // Return the frame rect without any constraints
@@ -46,18 +61,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.standardWindowButton(.zoomButton)?.isHidden = true
         
         // Create SwiftUI content
-        let contentView = ZStack {
-            // Large transparent canvas for complete freedom
-            Color.clear
-                .frame(width: 2000, height: 1200)
-            
-            // Chatbar positioned in center
-            GlassmorphicChatbar()
+        let contentView = ReactiveThemeWrapper {
+            ZStack {
+                // Large transparent canvas for complete freedom
+                Color.clear
+                    .frame(width: 2000, height: 1200)
+                
+                // Chatbar positioned in center
+                GlassmorphicChatbar()
+            }
+            .frame(width: 2000, height: 1200)
         }
-        .frame(width: 2000, height: 1200)
         .environmentObject(BlurSettings.shared)
         .environmentObject(ThemeSettings.shared)
-        .preferredColorScheme(ThemeSettings.shared.colorScheme)
         
         // Set content
         window.contentView = NSHostingView(rootView: contentView)

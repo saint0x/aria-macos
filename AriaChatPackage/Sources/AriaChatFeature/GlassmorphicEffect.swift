@@ -97,7 +97,12 @@ struct GlassmorphicBackground: NSViewRepresentable {
 class CustomBlurView: NSView {
     var blurRadius: CGFloat = 16.0 {
         didSet {
-            needsDisplay = true
+            // Use smooth animation for blur changes
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.15)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+            updateBlurFilter()
+            CATransaction.commit()
         }
     }
     
@@ -145,7 +150,10 @@ class CustomBlurView: NSView {
     
     override func updateLayer() {
         super.updateLayer()
-        updateBlurFilter()
+        // Only update if not already animating
+        if CATransaction.animationDuration() == 0 {
+            updateBlurFilter()
+        }
     }
 }
 
