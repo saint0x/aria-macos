@@ -111,7 +111,9 @@ struct DropdownMenuView: View {
     @ViewBuilder
     private func menuButton(for item: MenuItem) -> some View {
         Button(action: {
+            print("DropdownMenu: Button clicked for item: \(item.name) (disabled: \(item.disabled))")
             if !item.disabled {
+                print("DropdownMenu: Calling onSelect for: \(item.name)")
                 onSelect(item)
                 isOpen = false
             }

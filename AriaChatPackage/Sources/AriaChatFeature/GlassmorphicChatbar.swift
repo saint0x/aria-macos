@@ -22,7 +22,8 @@ public struct GlassmorphicChatbar: View {
     private let expandedHeight: CGFloat = 450
     
     public var body: some View {
-        ZStack {
+        let _ = print("GlassmorphicChatbar: Rendering body, expanded: \(state.expanded), showAiChatFlow: \(state.showAiChatFlow)")
+        return ZStack {
             // Main content stack
             VStack(spacing: 0) {
                 // Main chatbar
@@ -50,6 +51,7 @@ public struct GlassmorphicChatbar: View {
                             
                             // View dropdown - aligned to trailing edge
                             if state.isViewMenuOpen {
+                                let _ = print("GlassmorphicChatbar: Rendering view dropdown menu")
                                 HStack {
                                     Spacer()
                                     DropdownMenuView(items: state.viewMenuItems, onSelect: handleViewSelect, isOpen: $state.isViewMenuOpen)
@@ -95,8 +97,8 @@ public struct GlassmorphicChatbar: View {
                         state.isToolMenuOpen = false
                         state.isViewMenuOpen = false
                     }
-                    .frame(width: 2000, height: 1200) // Match canvas size
-                    .zIndex(1)
+                    .frame(width: 800, height: 600) // Reasonable size that doesn't interfere with dropdowns
+                    .zIndex(-1)
             }
         }
         .onAppear {
@@ -233,6 +235,7 @@ public struct GlassmorphicChatbar: View {
     
     @ViewBuilder
     private var activeViewContent: some View {
+        let _ = print("GlassmorphicChatbar: Rendering activeViewContent for: \(state.activeView.name) (id: \(state.activeView.id))")
         switch state.activeView.id {
         case "taskListView":
             TaskListView(onTaskSelect: handleTaskSelectForDetail)
@@ -251,9 +254,13 @@ public struct GlassmorphicChatbar: View {
     }
     
     private var footerControls: some View {
-        HStack {
+        let _ = print("GlassmorphicChatbar: Rendering footerControls")
+        return HStack {
             // Tools dropdown
-            Button(action: { state.isToolMenuOpen.toggle() }) {
+            Button(action: { 
+                print("GlassmorphicChatbar: Tools button clicked")
+                state.isToolMenuOpen.toggle() 
+            }) {
                 HStack(spacing: 6) {
                     Text(state.activeTool?.name ?? "Tools")
                         .font(.textXS)
@@ -280,12 +287,11 @@ public struct GlassmorphicChatbar: View {
             
             // View dropdown
             Button(action: { 
-                if state.showAiChatFlow {
-                    state.activeView = state.viewMenuItems.first { $0.id == "taskListView" } ?? state.viewMenuItems[0]
-                    state.showAiChatFlow = false
-                } else {
-                    state.isViewMenuOpen.toggle()
-                }
+                print("GlassmorphicChatbar: View button clicked")
+                print("  - Current state: isViewMenuOpen=\(state.isViewMenuOpen), expanded=\(state.expanded), showAiChatFlow=\(state.showAiChatFlow)")
+                print("  - Current activeView: \(state.activeView.name) (id: \(state.activeView.id))")
+                state.isViewMenuOpen.toggle()
+                print("  - After toggle: isViewMenuOpen=\(state.isViewMenuOpen)")
             }) {
                 HStack(spacing: 6) {
                     Text(viewButtonTitle)
@@ -573,12 +579,14 @@ public struct GlassmorphicChatbar: View {
     
     private func handleViewSelect(_ view: MenuItem) {
         guard !view.disabled else { return }
+        print("GlassmorphicChatbar: Selecting view: \(view.name) (id: \(view.id))")
         state.activeView = view
         state.showAiChatFlow = false
         state.expanded = true
         state.selectedItemForDetail = nil
         state.isViewMenuOpen = false
         isInputFocused = true
+        print("GlassmorphicChatbar: View selected, showAiChatFlow: \(state.showAiChatFlow), expanded: \(state.expanded)")
     }
     
     private func handleTaskSelectForDetail(_ task: AriaTask) {
@@ -645,7 +653,8 @@ struct FooterButtonStyle: ButtonStyle {
     @State private var isHovered = false
     
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let _ = configuration.isPressed ? print("FooterButtonStyle: Button pressed") : nil
+        return configuration.label
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
@@ -660,6 +669,7 @@ struct FooterButtonStyle: ButtonStyle {
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.15), value: isHovered)
             .onHover { hovering in
+                print("FooterButtonStyle: Hover changed to: \(hovering)")
                 isHovered = hovering
                 if hovering {
                     NSCursor.pointingHand.push()
