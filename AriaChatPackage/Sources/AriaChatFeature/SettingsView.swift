@@ -29,11 +29,11 @@ struct SettingsView: View {
     ]
     
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(spacing: 12) { // space-y-3
                 // Model Configuration Section
                 Button(action: {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(AnimationSystem.gentleTransition) {
                         modelConfigExpanded.toggle()
                     }
                 }) {
@@ -148,14 +148,14 @@ struct SettingsView: View {
                             .fill(Color.inputBackground(for: colorScheme).opacity(0.5))
                     )
                     .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity.combined(with: .move(edge: .top))
+                        insertion: .opacity.combined(with: .offset(y: -10)),
+                        removal: .opacity.combined(with: .offset(y: -10))
                     ))
                 }
                 
                 // Utility Management Section
                 Button(action: {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(AnimationSystem.gentleTransition) {
                         utilityManagementExpanded.toggle()
                     }
                 }) {
@@ -200,14 +200,14 @@ struct SettingsView: View {
                             .fill(Color.inputBackground(for: colorScheme).opacity(0.5))
                     )
                     .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity.combined(with: .move(edge: .top))
+                        insertion: .opacity.combined(with: .offset(y: -10)),
+                        removal: .opacity.combined(with: .offset(y: -10))
                     ))
                 }
                 
                 // Visual Settings Section
                 Button(action: {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(AnimationSystem.gentleTransition) {
                         visualSettingsExpanded.toggle()
                     }
                 }) {
@@ -305,12 +305,13 @@ struct SettingsView: View {
                             .fill(Color.inputBackground(for: colorScheme).opacity(0.5))
                     )
                     .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity.combined(with: .move(edge: .top))
+                        insertion: .opacity.combined(with: .offset(y: -10)),
+                        removal: .opacity.combined(with: .offset(y: -10))
                     ))
                 }
             }
-            .padding(4) // Outer padding
+            .padding(.horizontal, 4) // Outer padding
+            .padding(.vertical, 8) // Extra vertical padding for expansion
         }
         .slideUpFade(isVisible: true)
     }
