@@ -12,12 +12,13 @@ public actor RESTAPIClient {
     
     private init() {
         // Configure base URL from environment or defaults
-        let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "localhost"
-        let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? "50052"
-        let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "http"
+        let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "overcast.whoisaria.co"
+        let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? ""
+        let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "https"
         
-        self.baseURL = URL(string: "\(scheme)://\(host):\(port)/api/v1")!
-        self.authBaseURL = URL(string: "\(scheme)://\(host):\(port)/api")!
+        let portString = port.isEmpty ? "" : ":\(port)"
+        self.baseURL = URL(string: "\(scheme)://\(host)\(portString)/api/v1")!
+        self.authBaseURL = URL(string: "\(scheme)://\(host)\(portString)/api")!
         
         // Configure URLSession
         let config = URLSessionConfiguration.default

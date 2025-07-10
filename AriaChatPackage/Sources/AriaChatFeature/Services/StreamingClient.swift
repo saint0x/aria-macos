@@ -153,7 +153,7 @@ public actor StreamingClient {
         // This will work for unauthenticated users (no headers added) and authenticated users
         // For authenticated users, we'll add the header if immediately available
         Task {
-            if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+            if await AuthenticationManager.shared.getAuthorizationHeader() != nil {
                 // For future requests, this will be available
                 print("StreamingClient: Auth header available for future requests")
             }

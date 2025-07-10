@@ -58,10 +58,11 @@ public class ChatService: ObservableObject {
             let request = ExecuteTurnRequest(input: input)
             
             // Build SSE URL
-            let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "localhost"
-            let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? "50052"
-            let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "http"
-            let urlString = "\(scheme)://\(host):\(port)/api/v1\(APIEndpoints.executeTurn(sessionId))"
+            let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "overcast.whoisaria.co"
+            let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? ""
+            let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "https"
+            let portString = port.isEmpty ? "" : ":\(port)"
+            let urlString = "\(scheme)://\(host)\(portString)/api/v1\(APIEndpoints.executeTurn(sessionId))"
             
             guard let url = URL(string: urlString) else {
                 throw APIError.invalidResponse

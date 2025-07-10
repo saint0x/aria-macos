@@ -108,9 +108,10 @@ public class AuthenticationManager: ObservableObject {
             let userInfo = try decodeJWT(token)
             
             // Store tokens in keychain
+            let refreshToken = userInfo.refreshToken ?? ""
             let (accessRef, refreshRef) = try keychainService.storeTokenPair(
                 accessToken: token,
-                refreshToken: userInfo.refreshToken ?? ""
+                refreshToken: refreshToken
             )
             
             // Update configuration
@@ -253,7 +254,7 @@ public class AuthenticationManager: ObservableObject {
             userId: claims.sub,
             email: claims.email,
             expiresAt: Date(timeIntervalSince1970: TimeInterval(claims.exp)),
-            refreshToken: nil // Will be provided separately
+            refreshToken: claims.refreshToken // Extract from JWT claims
         )
     }
 }
@@ -264,6 +265,7 @@ private struct JWTClaims: Codable {
     let sub: String // user_id
     let email: String
     let exp: Int64 // expiration timestamp
+    let refreshToken: String? // refresh token if provided in JWT
 }
 
 private struct JWTUserInfo {

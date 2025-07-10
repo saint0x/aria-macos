@@ -18,7 +18,7 @@ public final class URLSchemeHandler {
         let urlScheme = "aria"
         
         // Create URL for the scheme
-        guard let ariaURL = URL(string: "\(urlScheme)://") else { return }
+        guard URL(string: "\(urlScheme)://") != nil else { return }
         
         // Register as default handler
         LSSetDefaultHandlerForURLScheme(urlScheme as CFString, bundleIdentifier as CFString)

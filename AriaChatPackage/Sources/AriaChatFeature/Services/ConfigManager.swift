@@ -47,7 +47,7 @@ public struct DeviceInfo: Codable {
     
     private static func generateMachineId() -> String {
         // Try to get hardware UUID from IOKit
-        let platformExpert = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         guard platformExpert != 0 else {
             return UUID().uuidString
         }
@@ -91,8 +91,8 @@ public struct APIConfig: Codable {
     public var uploadEndpoint: String
     
     public init() {
-        self.baseUrl = "https://api.whoisaria.co"
-        self.wsUrl = "wss://api.whoisaria.co"
+        self.baseUrl = "https://overcast.whoisaria.co"
+        self.wsUrl = "wss://overcast.whoisaria.co"
         self.uploadEndpoint = "/api/v1/bundles/upload"
     }
 }
