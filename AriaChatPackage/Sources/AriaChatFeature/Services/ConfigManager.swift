@@ -222,7 +222,7 @@ public class ConfigManager: ObservableObject {
     /// Get auth login URL
     public func getAuthLoginURL() -> URL? {
         guard let magicNumber = getMagicNumber() else { return nil }
-        return URL(string: "https://whoisaria.co/auth/login?magic=\(magicNumber)")
+        return URL(string: "https://overcast.whoisaria.co/api/auth/signin/google?state=\(magicNumber)&callbackURL=aria://auth-success")
     }
     
     // MARK: - Private Methods
