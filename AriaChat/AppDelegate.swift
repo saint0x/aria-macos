@@ -78,6 +78,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            // No visible windows, bring our window to front
+            window.makeKeyAndOrderFront(nil)
+        }
+        return true
+    }
+    
+    func applicationDockTileForDisplay() -> NSDockTile? {
+        // Ensure single instance behavior
+        return NSApplication.shared.dockTile
+    }
+    
     // MARK: - URL Scheme Handler
     
     @MainActor @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
@@ -86,6 +99,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("AppDelegate: Invalid URL received")
             return
         }
+        
+        print("AppDelegate: Received URL scheme: \(urlString)")
+        
+        // Bring app to foreground and focus our window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
         
         // Delegate to URL scheme handler
         URLSchemeHandler.shared.handleURL(url)

@@ -30,26 +30,34 @@ public struct AriaRootView: View {
             }
         }
         .onReceive(authManager.$isAuthenticated) { isAuthenticated in
+            print("AriaRootView: Authentication state changed to: \(isAuthenticated)")
             updateViewState(authenticated: isAuthenticated)
         }
         .onAppear {
             // Set initial state based on current auth status
-            showOnboarding = !authManager.isAuthenticated
+            let initialShowOnboarding = !authManager.isAuthenticated
+            print("AriaRootView: onAppear - isAuthenticated: \(authManager.isAuthenticated), showOnboarding: \(initialShowOnboarding)")
+            showOnboarding = initialShowOnboarding
         }
     }
     
     private func updateViewState(authenticated: Bool) {
+        print("AriaRootView: updateViewState - authenticated: \(authenticated), showOnboarding: \(showOnboarding)")
+        
         if authenticated && showOnboarding {
             // User just signed in - animate transition
+            print("AriaRootView: Starting transition from onboarding to chat")
             animateTransition = true
             
             // After animation delay, switch views
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                print("AriaRootView: Completing transition to chat interface")
                 showOnboarding = false
                 animateTransition = true
             }
         } else if !authenticated && !showOnboarding {
             // User signed out - immediate switch back to onboarding
+            print("AriaRootView: Switching back to onboarding")
             showOnboarding = true
             animateTransition = false
         }

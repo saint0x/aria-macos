@@ -50,9 +50,12 @@ public final class URLSchemeHandler {
             return
         }
         
-        print("URLSchemeHandler: Processing auth success with token")
+        print("URLSchemeHandler: Processing auth success with token: \(token.prefix(20))...")
+        
         Task { @MainActor in
+            print("URLSchemeHandler: Starting authentication callback processing")
             await AuthenticationManager.shared.handleAuthCallback(token: token)
+            print("URLSchemeHandler: Authentication callback completed")
         }
     }
 }
