@@ -79,8 +79,8 @@ public class ChatService: ObservableObject {
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             urlRequest.httpBody = jsonData
             
-            // Add auth headers if available (non-blocking)
-            addAuthHeadersIfAvailable(&urlRequest)
+            // Add auth headers if available
+            await addAuthHeaders(&urlRequest)
             
             print("ChatService: Starting SSE stream for turn execution...")
             
@@ -288,19 +288,15 @@ public class ChatService: ObservableObject {
         onTurnOutput(.finalResponse("Based on my analysis, here's a comprehensive response to your query about \(input). This is a mock response demonstrating the system's capability to process your request and provide meaningful output."))
     }
     
-    /// Add auth headers to request if available (non-blocking)
-    private func addAuthHeadersIfAvailable(_ request: inout URLRequest) {
-        Task {
-            // This will not block the current request but will prepare for future auth
-            if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
-                print("ChatService: Auth header available: \(authHeader.prefix(20))...")
-                // Note: This header won't be added to the current request since it's async
-                // but it confirms auth is working for future requests
-            } else {
-                print("ChatService: No auth header available, proceeding without authentication")
-            }
+    /// Add auth headers to request if available
+    private func addAuthHeaders(_ request: inout URLRequest) async {
+        // Add authentication header if available
+        if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+            print("ChatService: Auth header added: \(authHeader.prefix(20))...")
+        } else {
+            print("ChatService: No auth header available, proceeding without authentication")
         }
-        // Request proceeds immediately - works for both authenticated and unauthenticated users
     }
 }
 
