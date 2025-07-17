@@ -56,20 +56,17 @@ struct DropdownMenuView: View {
     @State private var mounted = false
     
     var body: some View {
-        let menuContent = VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                menuItemView(for: item)
-                    .opacity(mounted ? 1 : 0)
-                    .scaleEffect(mounted ? 1 : 0.97)
-                    .animation(
-                        AnimationSystem.gentleTransition // Use gentleTransition as per SWIFT2.md
-                            .delay(Double(index) * 0.02), // Stagger animation  
-                        value: mounted
-                    )
+        let menuContent = ScrollView {
+            VStack(spacing: 0) {
+                ForEach(items, id: \.id) { item in
+                    menuItemView(for: item)
+                }
             }
+            .padding(6)
         }
-        .padding(6)
         .frame(width: 180)
+        .frame(maxHeight: 5 * 44) // Limit to 5 items (44pt per item)
+        .scrollIndicators(.hidden) // Hide scroll indicators
         
         let backgroundView = RoundedRectangle(cornerRadius: 12)
             .fill(Color.glassmorphicBackground(for: colorScheme))
@@ -85,12 +82,6 @@ struct DropdownMenuView: View {
             .background(backgroundView)
             .overlay(borderView)
             .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: 10)
-            .onAppear {
-                mounted = true
-            }
-            .onDisappear {
-                mounted = false
-            }
     }
     
     @ViewBuilder
@@ -117,9 +108,21 @@ struct DropdownMenuView: View {
             }
         }) {
             HStack {
-                Text(item.name)
-                    .font(.textSM)
-                    .foregroundColor(menuItemTextColor(for: item))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.textSM)
+                        .foregroundColor(menuItemTextColor(for: item))
+                    
+                    Text(item.category.label)
+                        .font(.textXS)
+                        .foregroundColor(item.category.color)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(item.category.color.opacity(0.1))
+                        )
+                }
                 Spacer()
             }
             .padding(.horizontal, 12)

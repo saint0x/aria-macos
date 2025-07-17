@@ -255,7 +255,7 @@ public struct GlassmorphicChatbar: View {
             // Tools dropdown
             Button(action: { state.isToolMenuOpen.toggle() }) {
                 HStack(spacing: 6) {
-                    Text(state.activeTool?.name ?? "Tools")
+                    Text(state.activeTool?.name ?? "Utility")
                         .font(.textXS)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10))
