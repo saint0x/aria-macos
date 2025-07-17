@@ -58,10 +58,11 @@ public class ChatService: ObservableObject {
             let request = ExecuteTurnRequest(input: input)
             
             // Build SSE URL
-            let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "localhost"
-            let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? "50052"
-            let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "http"
-            let urlString = "\(scheme)://\(host):\(port)/api/v1\(APIEndpoints.executeTurn(sessionId))"
+            let host = ProcessInfo.processInfo.environment["ARIA_API_HOST"] ?? "overcast.whoisaria.co"
+            let port = ProcessInfo.processInfo.environment["ARIA_API_PORT"] ?? ""
+            let scheme = ProcessInfo.processInfo.environment["ARIA_API_SCHEME"] ?? "https"
+            let portString = port.isEmpty ? "" : ":\(port)"
+            let urlString = "\(scheme)://\(host)\(portString)/api/v1\(APIEndpoints.executeTurn(sessionId))"
             
             guard let url = URL(string: urlString) else {
                 throw APIError.invalidResponse
@@ -77,6 +78,9 @@ public class ChatService: ObservableObject {
             urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             urlRequest.httpBody = jsonData
+            
+            // Add auth headers if available
+            await addAuthHeaders(&urlRequest)
             
             print("ChatService: Starting SSE stream for turn execution...")
             
@@ -282,6 +286,17 @@ public class ChatService: ObservableObject {
         
         // Simulate final response
         onTurnOutput(.finalResponse("Based on my analysis, here's a comprehensive response to your query about \(input). This is a mock response demonstrating the system's capability to process your request and provide meaningful output."))
+    }
+    
+    /// Add auth headers to request if available
+    private func addAuthHeaders(_ request: inout URLRequest) async {
+        // Add authentication header if available
+        if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+            print("ChatService: Auth header added: \(authHeader.prefix(20))...")
+        } else {
+            print("ChatService: No auth header available, proceeding without authentication")
+        }
     }
 }
 

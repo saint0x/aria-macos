@@ -22,6 +22,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: CustomFloatingWindow!
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize authentication on app launch
+        Task {
+            await AuthenticationManager.shared.initialize()
+        }
+        
+        // Register URL scheme with system
+        URLSchemeHandler.shared.registerURLScheme()
+        
+        // Register URL scheme handler
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
         // Create custom window with large canvas size
         let contentRect = NSRect(x: 0, y: 0, width: 2000, height: 1200)
         
@@ -45,19 +60,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
         
-        // Create SwiftUI content
-        let contentView = ZStack {
-            // Large transparent canvas for complete freedom
-            Color.clear
-                .frame(width: 2000, height: 1200)
-            
-            // Chatbar positioned in center
-            GlassmorphicChatbar()
-        }
-        .frame(width: 2000, height: 1200)
-        .environmentObject(BlurSettings.shared)
-        .environmentObject(ThemeSettings.shared)
-        .preferredColorScheme(ThemeSettings.shared.colorScheme)
+        // Create SwiftUI content with conditional rendering
+        let contentView = AriaRootView()
+            .frame(width: 2000, height: 1200)
+            .environmentObject(BlurSettings.shared)
+            .environmentObject(ThemeSettings.shared)
+            .environmentObject(AuthenticationManager.shared)
+            .preferredColorScheme(ThemeSettings.shared.colorScheme)
         
         // Set content
         window.contentView = NSHostingView(rootView: contentView)
@@ -67,5 +76,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+    
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            // No visible windows, bring our window to front
+            window.makeKeyAndOrderFront(nil)
+        }
+        return true
+    }
+    
+    func applicationDockTileForDisplay() -> NSDockTile? {
+        // Ensure single instance behavior
+        return NSApplication.shared.dockTile
+    }
+    
+    // MARK: - URL Scheme Handler
+    
+    @MainActor @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: urlString) else {
+            print("AppDelegate: Invalid URL received")
+            return
+        }
+        
+        print("AppDelegate: Received URL scheme: \(urlString)")
+        
+        // Bring app to foreground and focus our window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        
+        // Delegate to URL scheme handler
+        URLSchemeHandler.shared.handleURL(url)
     }
 }

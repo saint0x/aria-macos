@@ -1,0 +1,406 @@
+{
+  "documentTitle": "Frontend Architecture & Migration Plan",
+  "introduction": {
+    "description": "This document outlines the frontend architecture of the current macOS-inspired chat application and the migration plan to a native macOS application using Tauri and Vite.",
+    "coreComponent": "GlassmorphicChatbar",
+    "purpose": [
+      "Detail the existing frontend structure, components, styling, state management, and data flow built with Next.js (App Router) and React.",
+      "Outline the migration plan to transition this frontend into a native macOS application using Tauri as the application framework and Vite as the frontend build tool."
+    ],
+    "goal": "Retain the sophisticated UI, smooth animations, and overall user experience in the native application."
+  },
+  "currentFrontendArchitecture": {
+    "framework": "Next.js 14 (App Router), React 19, Tailwind CSS",
+    "coreComponent": {
+      "name": "GlassmorphicChatbar",
+      "file": "components/glassmorphic-chatbar.tsx",
+      "description": "Central UI element with a glassmorphic design (frosted glass effect).",
+      "functionality": [
+        "Initially appears as a compact input bar.",
+        "Expands dynamically on user interaction.",
+        "Contains the main input field for user queries.",
+        "Provides access to \"Tools\" and \"Views\" via dropdown menus.",
+        "Includes a \"New Task\" button to reset the chat/task flow.",
+        "Manages the display of either the AI chat flow or the selected view."
+      ]
+    },
+    "views": [
+      {
+        "name": "TaskListView",
+        "file": "components/views/task-list-view.tsx",
+        "description": "Displays a list of tasks with names and statuses.",
+        "interaction": "Clicking a task opens the StepDetailPane.",
+        "data": "Currently uses mock data fetched via Tanstack Query (useTasks hook)."
+      },
+      {
+        "name": "LoggingView",
+        "file": "components/views/logging-view.tsx",
+        "description": "Shows a stream of activity logs with time-based filtering.",
+        "interaction": "Log entries can be expanded to show detailed JSON data.",
+        "data": "Currently uses mock data fetched via Tanstack Query (useLogs hook)."
+      },
+      {
+        "name": "GraphView",
+        "file": "components/views/graph-view.tsx",
+        "description": "A placeholder for future graph visualization."
+      },
+      {
+        "name": "BillingView",
+        "file": "components/views/billing-view.tsx",
+        "description": "A static placeholder displaying mock billing information."
+      },
+      {
+        "name": "SettingsView",
+        "file": "components/views/settings-view.tsx",
+        "description": "Provides mock settings for Model Configuration, Utility Management, and Visual Settings."
+      }
+    ],
+    "sharedComponents": [
+      {
+        "name": "AgentStatusIndicator",
+        "file": "components/shared/agent-status-indicator.tsx",
+        "description": "Visualizes AI agent processing steps or chat interactions.",
+        "features": "Displays status icons, highlights active step, indents tool calls."
+      },
+      {
+        "name": "StepDetailPane",
+        "file": "components/shared/step-detail-pane.tsx",
+        "description": "A panel that slides in to display detailed information about a task or AI step.",
+        "features": "Glassmorphic design, smooth slide-in/out animation, rich text/JSON view."
+      },
+      {
+        "name": "DropdownMenuComponent",
+        "file": "components/shared/dropdown-menu.tsx",
+        "description": "Reusable, glassmorphic dropdown menu for \"Tools\" and \"Views\" selection.",
+        "features": "Anchored, animates in, handles outside clicks."
+      },
+      {
+        "name": "ToolUploadSuccessDisplay",
+        "file": "components/shared/tool-upload-success-display.tsx",
+        "description": "A toast-like notification component with a glassmorphic background."
+      }
+    ],
+    "stylingAndAnimations": {
+      "stylingEngine": "Tailwind CSS",
+      "configurationFiles": ["tailwind.config.ts", "app/globals.css"],
+      "features": "Apple-inspired color palette, custom shadow/blur definitions, CSS variables for light/dark mode.",
+      "animationEngine": "Framer Motion",
+      "animationDefinitionsFile": "lib/animations.ts",
+      "animatedElements": [
+        "GlassmorphicChatbar expansion/collapse",
+        "StepDetailPane slide-in/out",
+        "Content fading in views",
+        "Dropdown menu appearance"
+      ],
+      "glassmorphism": {
+        "technique": "CSS backdrop-filter: blur(...)",
+        "management": "Globally managed by BlurProvider (lib/contexts/blur-context.tsx), adjustable in Settings."
+      }
+    },
+    "stateManagement": {
+      "serverState": {
+        "library": "Tanstack Query",
+        "hooks": ["useTasks", "useLogs (lib/hooks/)"],
+        "dataSources": "Currently mock data from lib/data/"
+      },
+      "clientStateContexts": [
+        {
+          "name": "BlurProvider",
+          "description": "Manages and provides the global backdrop blur intensity."
+        },
+        {
+          "name": "ThemeProvider (next-themes)",
+          "description": "Manages light/dark mode."
+        }
+      ],
+      "localState": "React Hooks (useState, useRef) for UI logic."
+    },
+    "dataFlowAndTypes": {
+      "coreTypesFile": "lib/types.ts",
+      "jsonIOStructure": {
+        "input": "User input via GlassmorphicChatbar. API payloads structured by ChatRequestPayload (from Zod schema in app/api/chat/route.ts).",
+        "outputDisplay": {
+          "tasks": "Task[] in TaskListView.",
+          "logs": "LogEntry[] in LoggingView.",
+          "aiSteps": "EnhancedStep[] in AgentStatusIndicator.",
+          "stepDetailPane": "Internal StepDetailsContent structure (richText and jsonData)."
+        },
+        "mockDataFiles": {
+          "tasks": "lib/data/mock-tasks.ts",
+          "logs": "lib/data/mock-logs.ts"
+        }
+      },
+      "apiInteraction": {
+        "primary": "/api/chat for AI responses (ai SDK, useChat hook).",
+        "simulatedDataFetching": "lib/api/queries.ts for tasks and logs (Tanstack Query hooks)."
+      }
+    },
+    "backgroundImage": {
+      "implementation": "Static nature image set as background-image style on the main container in app/page.tsx.",
+      "interaction": "Glassmorphic elements render on top, blurring the portion of the image behind them."
+    }
+  },
+  "migrationPlanToTauriVite": {
+    "goals": [
+      "Create a high-performance, native macOS application.",
+      "Preserve the exact current UI design, including glassmorphism, animations, and user experience.",
+      "Leverage Vite for a fast frontend development workflow.",
+      "Utilize Tauri for native capabilities and packaging."
+    ],
+    "keySteps": [
+      {
+        "step": "Project Setup",
+        "details": "Initialize Tauri project, configure Vite as frontend dev server and build tool."
+      },
+      {
+        "step": "Component Migration",
+        "details": "Move React components (.tsx) into Vite project's source directory, maintaining structure."
+      },
+      {
+        "step": "Styling",
+        "details": "Migrate Tailwind CSS setup (tailwind.config.ts, globals.css) for Vite. Ensure theme compatibility."
+      },
+      {
+        "step": "Animations",
+        "details": "Framer Motion setup (lib/animations.ts) should transition smoothly."
+      },
+      {
+        "step": "State Management",
+        "details": "Tanstack Query to fetch via Tauri IPC or HTTP. React Context (BlurProvider) will function as is."
+      },
+      {
+        "step": "Routing",
+        "details": "Next.js App Router removed. Lightweight client-side router (e.g., React Router) if needed for multiple pages."
+      },
+      {
+        "step": "API Calls & Backend Logic",
+        "details": "Replace Next.js API route. Preferred: Implement logic in Rust (Tauri IPC). Alternative: Separate backend service. Input sanitization critical."
+      },
+      {
+        "step": "Type Safety",
+        "details": "Reuse types from lib/types.ts. Consider ts-rs for Rust-to-TS type generation."
+      },
+      {
+        "step": "Build & Packaging",
+        "details": "Vite builds static assets, Tauri bundles into native .app."
+      },
+      {
+        "step": "Native Application Shell",
+        "details": "Configure Tauri window (frameless/custom title bar). Static background for Tauri window. GlassmorphicChatbar as primary interface."
+      },
+      {
+        "step": "Event-Driven Architecture",
+        "details": "Use Tauri's event system for real-time backend-to-frontend updates (Rust emit, frontend listen)."
+      },
+      {
+        "step": "Placeholders",
+        "details": "Maintain all existing placeholders and simulated data/processes, formatted appropriately."
+      }
+    ]
+  },
+  "detailedFrontendTypeDefinitions": {
+    "sourceFile": "lib/types.ts",
+    "note": "These are currently frontend-defined and can be adjusted to align with backend API specifications.",
+    "enums": [
+      {
+        "name": "LogLevel",
+        "description": "Defines standard logging levels.",
+        "values": {
+          "INFO": "General operational information.",
+          "WARN": "Potential issues or unexpected events.",
+          "ERROR": "Errors that occurred during processing.",
+          "DEBUG": "Detailed information for debugging.",
+          "SUCCESS": "Successful completion of an operation."
+        }
+      },
+      {
+        "name": "ProcessStatus",
+        "description": "Represents the status of various backend or agent processes.",
+        "values": {
+          "STARTED": "Process has begun.",
+          "IN_PROGRESS": "Process is actively running.",
+          "COMPLETED": "Process finished successfully.",
+          "FAILED": "Process encountered an error and did not complete.",
+          "TOOL_CALL": "An agent is calling an external tool.",
+          "TOOL_RESPONSE": "An agent has received a response from a tool.",
+          "THINKING": "An agent is processing information or planning."
+        }
+      },
+      {
+        "name": "TaskStatus",
+        "description": "Specific statuses for user-facing tasks.",
+        "values": {
+          "COMPLETED": "Task is done.",
+          "IN_PROGRESS": "Task is actively being worked on but currently paused.",
+          "FAILED": "Task could not be completed.",
+          "PENDING": "Task is queued and waiting to start.",
+          "RUNNING": "Task is actively processing."
+        }
+      },
+      {
+        "name": "StepType",
+        "description": "Differentiates types of steps in an AI interaction flow.",
+        "values": {
+          "THOUGHT": "Internal \"thinking\" step of an AI agent.",
+          "TOOL": "An AI agent using a specific tool.",
+          "RESPONSE": "A message/response from the AI to the user.",
+          "USER_MESSAGE": "A message from the user to the AI."
+        }
+      },
+      {
+        "name": "StepStatus",
+        "description": "Status for individual AI interaction steps.",
+        "values": {
+          "PENDING": "Step is waiting to be processed.",
+          "ACTIVE": "Step is currently being processed.",
+          "COMPLETED": "Step finished successfully.",
+          "FAILED": "Step encountered an error."
+        }
+      }
+    ],
+    "interfaces": [
+      {
+        "name": "LogEntry",
+        "description": "Structure for a single log message.",
+        "fields": [
+          {"name": "id", "type": "string", "description": "Unique identifier for the log entry."},
+          {"name": "timestamp", "type": "string", "description": "ISO string representing when the log was created."},
+          {"name": "level", "type": "LogLevel", "description": "The severity level of the log."},
+          {"name": "message", "type": "string", "description": "The main content of the log."},
+          {"name": "source", "type": "string", "description": "Origin of the log."},
+          {"name": "entityName", "type": "string", "optional": true, "description": "Specific entity related to the log."},
+          {"name": "actor", "type": "string", "optional": true, "description": "User or system component that initiated the action."},
+          {"name": "status", "type": "ProcessStatus", "optional": true, "description": "Operational status related to the log event."},
+          {"name": "durationMs", "type": "number", "optional": true, "description": "Duration of the logged operation in milliseconds."},
+          {"name": "details", "type": "Record<string, any>", "optional": true, "description": "Additional structured data (JSON)."}
+        ],
+        "exampleDetails": {
+          "tool_name": "WebSearch",
+          "tool_input": { "query": "quantum computing finance impact 2024" }
+        }
+      },
+      {
+        "name": "Task",
+        "description": "Represents a user-assignable task or job.",
+        "fields": [
+          {"name": "id", "type": "string", "description": "Unique identifier for the task."},
+          {"name": "name", "type": "string", "description": "Display name of the task."},
+          {"name": "status", "type": "TaskStatus", "description": "Current status of the task."},
+          {"name": "agent", "type": "string", "optional": true, "description": "Name of the AI agent assigned to the task."},
+          {"name": "tools", "type": "string[]", "optional": true, "description": "Array of tool names used by the task."},
+          {"name": "currentStepDescription", "type": "string", "optional": true, "description": "Brief description of the task's current progress."},
+          {"name": "fullDescription", "type": "string", "description": "Detailed description of the task."},
+          {"name": "startTime", "type": "string", "optional": true, "description": "ISO string for when the task started."},
+          {"name": "endTime", "type": "string", "optional": true, "description": "ISO string for when the task ended."},
+          {"name": "detailIdentifier", "type": "string", "description": "A string used to link this task to its detail view."}
+        ],
+        "example": {
+          "id": "task-1",
+          "name": "Analyze Q1 Sales Data",
+          "status": "completed",
+          "agent": "DataInsight Pro",
+          "tools": ["Salesforce API", "Advanced Charting"],
+          "currentStepDescription": "Final report generated.",
+          "fullDescription": "Comprehensive analysis of Q1 sales...",
+          "startTime": "2024-07-15T09:00:00Z",
+          "endTime": "2024-07-15T11:30:00Z",
+          "detailIdentifier": "TASK_DETAIL_task-1"
+        }
+      },
+      {
+        "name": "EnhancedStep",
+        "description": "Describes a step in an AI agent's execution flow or chat interaction.",
+        "fields": [
+          {"name": "id", "type": "string", "description": "Unique identifier for the step."},
+          {"name": "type", "type": "StepType", "description": "The nature of the step."},
+          {"name": "text", "type": "string", "description": "Main textual content of the step."},
+          {"name": "status", "type": "StepStatus", "optional": true, "description": "Current processing status of the step."},
+          {"name": "toolName", "type": "string", "optional": true, "description": "Name of the tool being used (if type is 'tool')."},
+          {"name": "toolInput", "type": "any", "optional": true, "description": "Input data provided to the tool (JSON, if type is 'tool')."},
+          {"name": "isIndented", "type": "boolean", "optional": true, "description": "If the step should be visually indented."},
+          {"name": "timestamp", "type": "string", "optional": true, "description": "ISO string for when the step occurred."}
+        ],
+        "example": {
+          "id": "tool-1-162930293842",
+          "type": "tool",
+          "text": "Querying knowledge base...",
+          "status": "active",
+          "toolName": "KnowledgeRetriever",
+          "toolInput": { "topic": "market trends Q3" },
+          "isIndented": true,
+          "timestamp": "2024-07-18T10:30:05Z"
+        }
+      },
+      {
+        "name": "ChatRequestPayload",
+        "description": "Type inferred from Zod schema for chat API POST requests.",
+        "fields": [
+          {"name": "messages", "type": "{ role: \"user\" | \"assistant\" | \"system\", content: string }[]", "optional": true, "description": "Array of previous chat messages."},
+          {"name": "data", "type": "{ message?: string }", "optional": true, "description": "Object containing the current user message."}
+        ],
+        "example": {
+          "messages": [
+            { "role": "user", "content": "Hello there!" },
+            { "role": "assistant", "content": "Hi! How can I help you today?" }
+          ],
+          "data": {
+            "message": "Tell me about Tauri."
+          }
+        }
+      },
+      {
+        "name": "GetTasksResponse",
+        "description": "Expected structure for API response when fetching tasks.",
+        "fields": [
+          {"name": "tasks", "type": "Task[]", "description": "An array of Task objects."}
+        ],
+        "example": {
+          "tasks": [
+            {
+              "id": "task-1",
+              "name": "Analyze Q1 Sales Data",
+              "status": "completed",
+              "agent": "DataInsight Pro",
+              "tools": ["Salesforce API", "Advanced Charting"],
+              "currentStepDescription": "Final report generated.",
+              "fullDescription": "Comprehensive analysis of Q1 sales...",
+              "startTime": "2024-07-15T09:00:00Z",
+              "endTime": "2024-07-15T11:30:00Z",
+              "detailIdentifier": "TASK_DETAIL_task-1"
+            }
+          ]
+        }
+      },
+      {
+        "name": "GetLogsResponse",
+        "description": "Expected structure for API response when fetching logs.",
+        "fields": [
+          {"name": "logs", "type": "LogEntry[]", "description": "An array of LogEntry objects."},
+          {"name": "pageInfo", "type": "{ hasNextPage: boolean, endCursor: string | null }", "description": "Contains pagination details."}
+        ],
+        "example": {
+          "logs": [
+             {
+              "id": "log-agent1-001",
+              "timestamp": "2024-07-18T10:20:00Z",
+              "level": "INFO",
+              "message": "Agent 'ResearchPro' received task: 'Analyze impact of quantum computing on finance'.",
+              "source": "Agent Core",
+              "entityName": "Task:QuantumFinanceImpact",
+              "actor": "User:Analyst1",
+              "status": "STARTED",
+              "details": {
+                "taskId": "task_quantum_001"
+              }
+            }
+          ],
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "log_cursor_xyz"
+          }
+        }
+      }
+    ]
+  },
+  "conclusion": "The current frontend provides a strong foundation for migrating to a Tauri and Vite-based native macOS application. The focus will be on adapting data fetching and backend communication while preserving the high-fidelity UI/UX. Detailed type definitions will facilitate integration with the new backend."
+}

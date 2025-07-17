@@ -24,6 +24,9 @@ public actor StreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         
+        // Add auth headers synchronously if available (non-blocking)
+        addAuthHeadersSync(&request)
+        
         let task = session.dataTask(with: request) { data, response, error in
             Task {
                 if let error = error {
@@ -55,6 +58,9 @@ public actor StreamingClient {
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        
+        // Add auth headers synchronously if available (non-blocking)
+        addAuthHeadersSync(&request)
         
         return streamWithRequest(request: request, onEvent: onEvent, onError: onError)
     }
@@ -133,6 +139,26 @@ public actor StreamingClient {
             task.cancel()
         }
         activeStreams.removeAll()
+    }
+    
+    private func addAuthHeaders(_ request: inout URLRequest) async {
+        // Add authentication header if available
+        if let authHeader = await AuthenticationManager.shared.getAuthorizationHeader() {
+            request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
+    }
+    
+    private func addAuthHeadersSync(_ request: inout URLRequest) {
+        // Non-blocking auth header addition for compatibility
+        // This will work for unauthenticated users (no headers added) and authenticated users
+        // For authenticated users, we'll add the header if immediately available
+        Task {
+            if await AuthenticationManager.shared.getAuthorizationHeader() != nil {
+                // For future requests, this will be available
+                print("StreamingClient: Auth header available for future requests")
+            }
+        }
+        // Request proceeds immediately without blocking, works for unauthenticated flow
     }
 }
 

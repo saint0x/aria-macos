@@ -20,10 +20,14 @@ MACOSX_DEPLOYMENT_TARGET = 14.0
 // ==========================================
 // Info PLIST
 // ==========================================
-GENERATE_INFOPLIST_FILE = YES
+GENERATE_INFOPLIST_FILE = NO
+INFOPLIST_FILE = Config/Info.plist
 
 // ==========================================
-// Entitlements
+// Entitlements & Code Signing
 // ==========================================
-// AI agents can modify Config/AriaChat.entitlements to add capabilities
 CODE_SIGN_ENTITLEMENTS = Config/AriaChat.entitlements
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = 
+PROVISIONING_PROFILE_SPECIFIER =

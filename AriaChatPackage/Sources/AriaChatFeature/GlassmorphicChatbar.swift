@@ -378,14 +378,12 @@ public struct GlassmorphicChatbar: View {
         do {
             // Create a simple actor to hold mutable state
             let turnState = TurnState()
-            var hasReceivedAnyEvents = false
             
             print("GlassmorphicChatbar: Starting executeTurn for input: '\(input)'")
             
             try await state.chatService.executeTurn(input: input) { event in
                 Task { @MainActor in
                     eventCount += 1
-                    hasReceivedAnyEvents = true
                     print("GlassmorphicChatbar: Received event #\(eventCount): \(event)")
                     
                     // Remove acknowledgment on first meaningful event

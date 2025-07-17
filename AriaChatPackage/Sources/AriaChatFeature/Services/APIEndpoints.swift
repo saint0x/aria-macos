@@ -46,6 +46,17 @@ public enum APIEndpoints {
     /// GET /api/v1/notifications/stream - Stream notifications (SSE streaming)
     public static let notificationsStream = "/notifications/stream"
     
+    // MARK: - Authentication
+    
+    /// POST /api/auth/link-magic - Link magic number to user account
+    public static let linkMagic = "/auth/link-magic"
+    
+    /// GET /api/auth/magic-status - Check magic number link status
+    public static let magicStatus = "/auth/magic-status"
+    
+    /// POST /api/auth/refresh - Refresh authentication tokens
+    public static let refreshToken = "/auth/refresh"
+    
     // MARK: - Bundles
     
     /// POST /api/v1/bundles/upload - Upload a bundle
@@ -85,6 +96,10 @@ public enum APIEndpoints {
         
         public static func taskOutput(follow: Bool) -> [URLQueryItem] {
             [URLQueryItem(name: "follow", value: String(follow))]
+        }
+        
+        public static func magicStatus(magic: String) -> [URLQueryItem] {
+            [URLQueryItem(name: "magic", value: magic)]
         }
     }
 }
