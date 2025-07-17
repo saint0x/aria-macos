@@ -35,9 +35,35 @@ struct EnhancedStep: Identifiable {
 }
 
 // MARK: - Menu Items
+enum MenuItemCategory {
+    case agent
+    case tool
+    case pipeline
+    case team
+    
+    var color: Color {
+        switch self {
+        case .agent: return .blue
+        case .tool: return .green
+        case .pipeline: return .orange
+        case .team: return .purple
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .agent: return "Agent"
+        case .tool: return "Tool"
+        case .pipeline: return "Pipeline"
+        case .team: return "Team"
+        }
+    }
+}
+
 struct MenuItem: Identifiable {
     let id: String
     let name: String
+    let category: MenuItemCategory
     var action: (() -> Void)?
     var separator: String?
     var disabled: Bool = false
@@ -93,25 +119,22 @@ class GlassmorphicChatbarState: ObservableObject {
     ]
     
     let toolMenuItems: [MenuItem] = [
-        MenuItem(id: "analyzerTool", name: "Analyzer Tool"),
-        MenuItem(id: "devConsoleTool", name: "Developer Console"),
-        MenuItem(id: "dataVizTool", name: "Data Visualizer"),
-        MenuItem(id: "apiExplorerTool", name: "API Explorer"),
-        MenuItem(id: "workflowTool", name: "Workflow Automator"),
-        MenuItem(id: "contentGenTool", name: "Content Generator"),
-        MenuItem(id: "securityScanTool", name: "Security Scanner"),
-        MenuItem(id: "collabHubTool", name: "Collaboration Hub")
+        MenuItem(id: "analyzerAgent", name: "Code Analyzer", category: .agent),
+        MenuItem(id: "devConsoleTool", name: "Developer Console", category: .tool),
+        MenuItem(id: "buildPipeline", name: "Build Pipeline", category: .pipeline),
+        MenuItem(id: "devTeam", name: "Development Team", category: .team),
+        MenuItem(id: "dataVizTool", name: "Data Visualizer", category: .tool)
     ]
     
     let viewMenuItems: [MenuItem]
     
     init() {
         let items = [
-            MenuItem(id: "taskListView", name: "Task View"),
-            MenuItem(id: "loggingView", name: "Logging"),
-            MenuItem(id: "graphView", name: "Graph View", disabled: true),
-            MenuItem(id: "billingView", name: "Billing", separator: "before"),
-            MenuItem(id: "settingsView", name: "Settings")
+            MenuItem(id: "taskListView", name: "Task View", category: .tool),
+            MenuItem(id: "loggingView", name: "Logging", category: .tool),
+            MenuItem(id: "graphView", name: "Graph View", category: .tool, disabled: true),
+            MenuItem(id: "billingView", name: "Billing", category: .tool, separator: "before"),
+            MenuItem(id: "settingsView", name: "Settings", category: .tool)
         ]
         self.viewMenuItems = items
         self.activeView = items[0]
