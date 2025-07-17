@@ -116,11 +116,25 @@ struct DropdownMenuView: View {
                 isOpen = false
             }
         }) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(item.name)
                     .font(.textSM)
                     .foregroundColor(menuItemTextColor(for: item))
+                
                 Spacer()
+                
+                // Category pill label (only show if category exists)
+                if let category = item.category {
+                    Text(category.displayName.uppercased())
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(category.color)
+                        )
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

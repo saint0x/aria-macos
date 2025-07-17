@@ -35,12 +35,42 @@ struct EnhancedStep: Identifiable {
 }
 
 // MARK: - Menu Items
+enum MenuCategory: String, CaseIterable {
+    case agents = "agents"
+    case tools = "tools"
+    case teams = "teams"
+    case pipelines = "pipelines"
+    
+    var displayName: String {
+        switch self {
+        case .agents: return "Agent"
+        case .tools: return "Tool"
+        case .teams: return "Team"
+        case .pipelines: return "Pipeline"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .agents: return Color.blue
+        case .tools: return Color.green
+        case .teams: return Color.purple
+        case .pipelines: return Color.orange
+        }
+    }
+}
+
 struct MenuItem: Identifiable {
     let id: String
     let name: String
+    let category: MenuCategory?
     var action: (() -> Void)?
     var separator: String?
     var disabled: Bool = false
+    
+    var color: Color {
+        return category?.color ?? Color.clear
+    }
 }
 
 // MARK: - Task
@@ -93,25 +123,25 @@ class GlassmorphicChatbarState: ObservableObject {
     ]
     
     let toolMenuItems: [MenuItem] = [
-        MenuItem(id: "analyzerTool", name: "Analyzer Tool"),
-        MenuItem(id: "devConsoleTool", name: "Developer Console"),
-        MenuItem(id: "dataVizTool", name: "Data Visualizer"),
-        MenuItem(id: "apiExplorerTool", name: "API Explorer"),
-        MenuItem(id: "workflowTool", name: "Workflow Automator"),
-        MenuItem(id: "contentGenTool", name: "Content Generator"),
-        MenuItem(id: "securityScanTool", name: "Security Scanner"),
-        MenuItem(id: "collabHubTool", name: "Collaboration Hub")
+        MenuItem(id: "aiAgent1", name: "ResearchAgent", category: .agents),
+        MenuItem(id: "aiAgent2", name: "ContentAgent", category: .agents),
+        MenuItem(id: "analyzerTool", name: "DataAnalyzer", category: .tools),
+        MenuItem(id: "devConsoleTool", name: "DevConsole", category: .tools),
+        MenuItem(id: "team1", name: "DesignTeam", category: .teams),
+        MenuItem(id: "team2", name: "DevTeam", category: .teams),
+        MenuItem(id: "pipeline1", name: "CICDPipeline", category: .pipelines),
+        MenuItem(id: "pipeline2", name: "DeployPipeline", category: .pipelines)
     ]
     
     let viewMenuItems: [MenuItem]
     
     init() {
         let items = [
-            MenuItem(id: "taskListView", name: "Task View"),
-            MenuItem(id: "loggingView", name: "Logging"),
-            MenuItem(id: "graphView", name: "Graph View", disabled: true),
-            MenuItem(id: "billingView", name: "Billing", separator: "before"),
-            MenuItem(id: "settingsView", name: "Settings")
+            MenuItem(id: "taskListView", name: "Task View", category: nil),
+            MenuItem(id: "loggingView", name: "Logging", category: nil),
+            MenuItem(id: "graphView", name: "Graph View", category: nil, disabled: true),
+            MenuItem(id: "billingView", name: "Billing", category: nil, separator: "before"),
+            MenuItem(id: "settingsView", name: "Settings", category: nil)
         ]
         self.viewMenuItems = items
         self.activeView = items[0]
