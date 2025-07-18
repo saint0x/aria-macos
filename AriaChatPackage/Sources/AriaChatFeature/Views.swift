@@ -78,13 +78,78 @@ struct TaskListView: View {
     }
     
     private func convertTaskResponseToAriaTask(_ taskResponse: TaskResponse) -> AriaTask {
+        // Generate a meaningful title from task metadata
+        let title = generateTaskTitle(from: taskResponse)
+        
         AriaTask(
             id: taskResponse.id,
-            title: "Task \(taskResponse.id.prefix(8))",
+            title: title,
             detailIdentifier: taskResponse.sessionId ?? "",
             status: taskManager.mapTaskStatus(taskResponse.status),
             timestamp: taskResponse.createdAt
         )
+    }
+    
+    private func generateTaskTitle(from taskResponse: TaskResponse) -> String {
+        // Try to extract meaningful information from task type and payload
+        let taskType = taskResponse.type
+        let payload = taskResponse.payload
+        
+        // Handle specific task types
+        switch taskType.lowercased() {
+        case "shell", "command":
+            if let command = payload?.command {
+                return "Run: \(command.prefix(30))\(command.count > 30 ? "..." : "")"
+            }
+            return "Shell Command"
+            
+        case "file", "read_file":
+            if let args = payload?.args,
+               let filename = args["file"]?.wrappedValue as? String {
+                return "Read: \(URL(fileURLWithPath: filename).lastPathComponent)"
+            }
+            return "File Operation"
+            
+        case "write", "write_file":
+            if let args = payload?.args,
+               let filename = args["file"]?.wrappedValue as? String {
+                return "Write: \(URL(fileURLWithPath: filename).lastPathComponent)"
+            }
+            return "File Write"
+            
+        case "search", "grep":
+            if let args = payload?.args,
+               let pattern = args["pattern"]?.wrappedValue as? String {
+                return "Search: \(pattern.prefix(20))\(pattern.count > 20 ? "..." : "")"
+            }
+            return "Search Operation"
+            
+        case "api", "http", "request":
+            if let args = payload?.args,
+               let url = args["url"]?.wrappedValue as? String {
+                let domain = URL(string: url)?.host ?? url
+                return "API: \(domain.prefix(25))\(domain.count > 25 ? "..." : "")"
+            }
+            return "API Request"
+            
+        case "analysis", "analyze":
+            return "Analysis Task"
+            
+        case "generation", "generate":
+            return "Generation Task"
+            
+        default:
+            // Extract first meaningful argument value
+            if let args = payload?.args,
+               let firstValue = args.values.first?.wrappedValue as? String,
+               !firstValue.isEmpty {
+                let cleanValue = firstValue.replacingOccurrences(of: "\n", with: " ")
+                return "\(taskType.capitalized): \(cleanValue.prefix(25))\(cleanValue.count > 25 ? "..." : "")"
+            }
+            
+            // Fall back to type-based title
+            return "\(taskType.capitalized) Task"
+        }
     }
 }
 
@@ -191,6 +256,7 @@ struct TaskRow: View {
 struct LoggingView: View {
     @State private var selectedTimeframe = "7d"
     @State private var isTimeframeMenuOpen = false
+    @StateObject private var observabilityService = ObservabilityService.shared
     @Environment(\.colorScheme) var colorScheme
     
     let timeframeOptions = [
@@ -202,17 +268,12 @@ struct LoggingView: View {
     ]
     
     var activeTimeframeLabel: String {
-        timeframeOptions.first { $0.0 == selectedTimeframe }?.0 ?? "7d"
+        timeframeOptions.first { $0.0 == selectedTimeframe }?.1 ?? "Last 7 days"
     }
     
-    @State private var logs: [LogEntry] = [
-        LogEntry(timestamp: Date(), level: "INFO", source: "System", message: "System initialized"),
-        LogEntry(timestamp: Date().addingTimeInterval(-60), level: "INFO", source: "Network", message: "Connected to server"),
-        LogEntry(timestamp: Date().addingTimeInterval(-120), level: "SUCCESS", source: "Auth", message: "Authentication successful"),
-        LogEntry(timestamp: Date().addingTimeInterval(-180), level: "INFO", source: "Data", message: "Loading user data..."),
-        LogEntry(timestamp: Date().addingTimeInterval(-240), level: "WARN", source: "API", message: "Rate limit approaching"),
-        LogEntry(timestamp: Date().addingTimeInterval(-300), level: "ERROR", source: "Database", message: "Connection timeout"),
-    ]
+    var filteredLogs: [APIModels.LogEntry] {
+        observabilityService.logs
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -296,9 +357,30 @@ struct LoggingView: View {
                 // Log entries
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(logs) { entry in
-                            LogEntryRow(entry: entry)
-                            Divider()
+                        if observabilityService.isLoadingLogs {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Loading logs...")
+                                    .font(.textSM)
+                                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                            }
+                            .padding(.vertical, 20)
+                        } else if let error = observabilityService.logsError {
+                            Text("Error loading logs: \(error.localizedDescription)")
+                                .font(.textSM)
+                                .foregroundColor(.red)
+                                .padding(.vertical, 20)
+                        } else if filteredLogs.isEmpty {
+                            Text("No logs available")
+                                .font(.textSM)
+                                .foregroundColor(Color.textSecondary(for: colorScheme))
+                                .padding(.vertical, 20)
+                        } else {
+                            ForEach(filteredLogs, id: \.id) { entry in
+                                RealTimeLogEntryRow(entry: entry)
+                                Divider()
+                            }
                         }
                     }
                 }
@@ -315,6 +397,20 @@ struct LoggingView: View {
             .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 5)
         }
         .slideUpFade(isVisible: true)
+        .onAppear {
+            Task {
+                do {
+                    try await observabilityService.loadRecentLogs(limit: 100)
+                    // Start real-time log streaming
+                    observabilityService.startLogStreaming()
+                } catch {
+                    print("LoggingView: Error loading logs: \(error)")
+                }
+            }
+        }
+        .onDisappear {
+            observabilityService.stopLogStreaming()
+        }
     }
 }
 
@@ -405,6 +501,140 @@ struct LogEntryRow: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
                             )
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .transition(.asymmetric(
+                    insertion: .offset(y: -10).combined(with: .opacity),
+                    removal: .offset(y: -5).combined(with: .opacity)
+                ))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: isExpanded)
+    }
+}
+
+// MARK: - Real-time Log Entry Row for API LogEntry
+struct RealTimeLogEntryRow: View {
+    let entry: APIModels.LogEntry
+    @State private var isExpanded = false
+    @State private var isHovered = false
+    @Environment(\.colorScheme) var colorScheme
+    
+    var levelColor: Color {
+        switch entry.level.lowercased() {
+        case "error": return .red
+        case "warn", "warning": return .orange
+        case "info": return .blue
+        case "debug": return .gray
+        default: return Color.textPrimary(for: colorScheme)
+        }
+    }
+    
+    var formattedTimestamp: String {
+        guard let date = entry.timestampDate else {
+            return entry.timestamp
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                // Timestamp
+                Text(formattedTimestamp)
+                    .frame(width: 120, alignment: .leading)
+                    .font(.monoXS)
+                
+                // Level
+                Text(entry.level.uppercased())
+                    .frame(width: 60, alignment: .leading)
+                    .font(.textXS)
+                    .foregroundColor(levelColor)
+                
+                // Component (instead of source)
+                Text(entry.metadata.component)
+                    .frame(width: 80, alignment: .leading)
+                    .font(.textXS)
+                
+                // Message
+                Text(entry.message)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.textXS)
+                    .lineLimit(1)
+                
+                // Expand chevron if metadata has details
+                if !entry.fields.isEmpty || entry.metadata.operation != nil {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.textTertiary(for: colorScheme))
+                }
+            }
+            .foregroundColor(Color.textPrimary(for: colorScheme))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .background(isHovered ? Color.hoverBackground(for: colorScheme) : Color.clear)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            .onTapGesture {
+                if !entry.fields.isEmpty || entry.metadata.operation != nil {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                }
+            }
+            
+            // Expanded details
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    // Metadata details
+                    if let operation = entry.metadata.operation {
+                        HStack {
+                            Text("Operation:")
+                                .font(.textXS(.medium))
+                            Text(operation)
+                                .font(.textXS)
+                        }
+                    }
+                    
+                    if let durationMs = entry.metadata.durationMs {
+                        HStack {
+                            Text("Duration:")
+                                .font(.textXS(.medium))
+                            Text("\(durationMs)ms")
+                                .font(.textXS)
+                        }
+                    }
+                    
+                    if let sessionId = entry.sessionId {
+                        HStack {
+                            Text("Session:")
+                                .font(.textXS(.medium))
+                            Text(sessionId.prefix(8))
+                                .font(.monoXS)
+                        }
+                    }
+                    
+                    // Additional fields
+                    if !entry.fields.isEmpty {
+                        Text("Additional Data:")
+                            .font(.textXS(.medium))
+                            .padding(.top, 4)
+                        
+                        ForEach(Array(entry.fields.keys.sorted()), id: \.self) { key in
+                            HStack {
+                                Text("\(key):")
+                                    .font(.textXS(.medium))
+                                Text("\(entry.fields[key]?.wrappedValue ?? "nil")")
+                                    .font(.monoXS)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 12)

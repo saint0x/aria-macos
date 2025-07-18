@@ -10,23 +10,24 @@ struct SettingsView: View {
     @State private var selectedModel = "gpt-4"
     @State private var systemPromptFile: String? = nil
     
-    // Utility Management
-    @State private var tools = ["Web Search", "Code Runner", "File Manager"]
-    @State private var agents = ["Assistant", "Debugger", "Researcher"]
-    @State private var teamMembers = ["John Doe", "Jane Smith"]
-    @State private var pipelines = ["Data Processing", "CI/CD"]
+    // Dynamic Services
+    @StateObject private var registryService = RegistryService.shared
+    @StateObject private var modelService = ModelService.shared
+    
+    // UI State
+    @State private var isLoadingData = false
     
     // Accordion expansion states
     @State private var modelConfigExpanded = false
     @State private var utilityManagementExpanded = false
     @State private var visualSettingsExpanded = false
     
-    let modelProviders = [
-        ("OpenAI", ["gpt-4", "gpt-3.5-turbo", "gpt-4-turbo-preview"]),
-        ("Anthropic", ["claude-3-opus", "claude-3-sonnet", "claude-2.1"]),
-        ("Google", ["gemini-pro", "gemini-pro-vision"]),
-        ("xAI", ["grok-1", "grok-2"])
-    ]
+    // Dynamic computed property for model providers
+    private var dynamicModelProviders: [(String, [String])] {
+        return modelService.getAllAvailableModels().map { providerData in
+            (providerData.provider.displayName, providerData.models.map { $0.name })
+        }
+    }
     
     var body: some View {
         ScrollView {
@@ -66,15 +67,23 @@ struct SettingsView: View {
                                 .foregroundColor(Color.textSecondary(for: colorScheme))
                             
                             Menu {
-                                ForEach(modelProviders, id: \.0) { provider, models in
-                                    Section(header: Text(provider)) {
-                                        ForEach(models, id: \.self) { model in
-                                            Button(action: { selectedModel = model }) {
-                                                HStack {
-                                                    Text(model)
-                                                    if selectedModel == model {
-                                                        Spacer()
-                                                        Image(systemName: "checkmark")
+                                if dynamicModelProviders.isEmpty {
+                                    Text("Loading providers...")
+                                        .foregroundColor(Color.textSecondary(for: colorScheme))
+                                } else {
+                                    ForEach(dynamicModelProviders, id: \.0) { provider, models in
+                                        Section(header: Text(provider)) {
+                                            ForEach(models, id: \.self) { model in
+                                                Button(action: { 
+                                                    selectedModel = model
+                                                    // TODO: Call model selection API
+                                                }) {
+                                                    HStack {
+                                                        Text(model)
+                                                        if selectedModel == model {
+                                                            Spacer()
+                                                            Image(systemName: "checkmark")
+                                                        }
                                                     }
                                                 }
                                             }
@@ -182,16 +191,36 @@ struct SettingsView: View {
                 if utilityManagementExpanded {
                     VStack(spacing: 16) {
                         // Tools
-                        UtilitySection(title: "Tools", items: $tools)
+                        DynamicUtilitySection(
+                            title: "Tools",
+                            items: registryService.getAvailableTools().map { $0.name },
+                            isLoading: registryService.isLoadingTools,
+                            error: registryService.toolsError
+                        )
                         
                         // Agents
-                        UtilitySection(title: "Agents", items: $agents)
+                        DynamicUtilitySection(
+                            title: "Agents", 
+                            items: registryService.getAvailableAgents().map { $0.name },
+                            isLoading: registryService.isLoadingAgents,
+                            error: registryService.agentsError
+                        )
                         
-                        // Team
-                        UtilitySection(title: "Team", items: $teamMembers)
+                        // Team (placeholder for now)
+                        DynamicUtilitySection(
+                            title: "Team",
+                            items: [],
+                            isLoading: false,
+                            error: nil
+                        )
                         
-                        // Pipelines
-                        UtilitySection(title: "Pipelines", items: $pipelines)
+                        // Pipelines (placeholder for now)
+                        DynamicUtilitySection(
+                            title: "Pipelines",
+                            items: [],
+                            isLoading: false,
+                            error: nil
+                        )
                     }
                     .padding(14)
                     .padding(.top, -8)
@@ -303,10 +332,99 @@ struct SettingsView: View {
             .padding(4) // Outer padding
         }
         .slideUpFade(isVisible: true)
+        .onAppear {
+            if !isLoadingData {
+                isLoadingData = true
+                Task {
+                    do {
+                        async let toolsTask = registryService.loadTools()
+                        async let agentsTask = registryService.loadAgents()
+                        async let providersTask = modelService.loadProviders()
+                        
+                        try await toolsTask
+                        try await agentsTask
+                        try await providersTask
+                        
+                        // Load models for all configured providers
+                        try await modelService.loadAllProviderModels()
+                        
+                        // Set current model selection if available
+                        if let currentModel = modelService.currentModel {
+                            selectedModel = currentModel
+                        }
+                        
+                        print("SettingsView: Loaded dynamic data successfully")
+                    } catch {
+                        print("SettingsView: Error loading data: \(error)")
+                    }
+                    isLoadingData = false
+                }
+            }
+        }
     }
 }
 
-// MARK: - Utility Section Component
+// MARK: - Dynamic Utility Section Component
+struct DynamicUtilitySection: View {
+    let title: String
+    let items: [String]
+    let isLoading: Bool
+    let error: Error?
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.textXS(.medium))
+                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+            }
+            
+            if let error = error {
+                Text("Error loading \(title.lowercased()): \(error.localizedDescription)")
+                    .font(.textXS)
+                    .foregroundColor(.red)
+                    .italic()
+            } else if items.isEmpty && !isLoading {
+                Text("No \(title.lowercased()) available")
+                    .font(.textXS)
+                    .foregroundColor(Color.textTertiary(for: colorScheme))
+                    .italic()
+            } else if !items.isEmpty {
+                ForEach(0..<items.count, id: \.self) { index in
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text(items[index])
+                                .font(.textSM)
+                                .foregroundColor(Color.textPrimary(for: colorScheme))
+                            
+                            Spacer()
+                            
+                            // Show availability indicator
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                        }
+                        .padding(.vertical, 4)
+                        
+                        if index < items.count - 1 {
+                            Divider()
+                                .background(Color.borderColor(for: colorScheme).opacity(0.5))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Legacy Utility Section Component (kept for compatibility)
 struct UtilitySection: View {
     let title: String
     @Binding var items: [String]

@@ -122,16 +122,10 @@ class GlassmorphicChatbarState: ObservableObject {
         AriaTask(id: "3", title: "API integration", detailIdentifier: "API-003", status: .completed, timestamp: Date())
     ]
     
-    let toolMenuItems: [MenuItem] = [
-        MenuItem(id: "aiAgent1", name: "ResearchAgent", category: .agents),
-        MenuItem(id: "aiAgent2", name: "ContentAgent", category: .agents),
-        MenuItem(id: "analyzerTool", name: "DataAnalyzer", category: .tools),
-        MenuItem(id: "devConsoleTool", name: "DevConsole", category: .tools),
-        MenuItem(id: "team1", name: "DesignTeam", category: .teams),
-        MenuItem(id: "team2", name: "DevTeam", category: .teams),
-        MenuItem(id: "pipeline1", name: "CICDPipeline", category: .pipelines),
-        MenuItem(id: "pipeline2", name: "DeployPipeline", category: .pipelines)
-    ]
+    @Published var toolMenuItems: [MenuItem] = []
+    
+    // Registry service for dynamic loading
+    private let registryService = RegistryService.shared
     
     let viewMenuItems: [MenuItem]
     
@@ -145,5 +139,56 @@ class GlassmorphicChatbarState: ObservableObject {
         ]
         self.viewMenuItems = items
         self.activeView = items[0]
+        
+        // Load dynamic tool menu items
+        loadToolMenuItems()
+    }
+    
+    private func loadToolMenuItems() {
+        Task {
+            do {
+                // Load tools and agents from registry
+                async let toolsTask = registryService.loadTools()
+                async let agentsTask = registryService.loadAgents()
+                
+                try await toolsTask
+                try await agentsTask
+                
+                await MainActor.run {
+                    var menuItems: [MenuItem] = []
+                    
+                    // Add agents
+                    for agent in registryService.getAvailableAgents() {
+                        menuItems.append(MenuItem(
+                            id: agent.id,
+                            name: agent.name,
+                            category: .agents
+                        ))
+                    }
+                    
+                    // Add tools
+                    for tool in registryService.getAvailableTools() {
+                        menuItems.append(MenuItem(
+                            id: tool.id,
+                            name: tool.name,
+                            category: .tools
+                        ))
+                    }
+                    
+                    // TODO: Add teams and pipelines when available from backend
+                    
+                    self.toolMenuItems = menuItems
+                    print("GlassmorphicChatbarState: Loaded \(menuItems.count) dynamic tool menu items")
+                }
+                
+            } catch {
+                print("GlassmorphicChatbarState: Error loading tool menu items: \(error)")
+                // Fall back to empty array or keep existing items
+            }
+        }
+    }
+    
+    public func refreshToolMenuItems() {
+        loadToolMenuItems()
     }
 }

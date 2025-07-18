@@ -50,6 +50,7 @@ struct DropdownMenuView: View {
     let items: [MenuItem]
     let onSelect: (MenuItem) -> Void
     @Binding var isOpen: Bool
+    let persistOnClick: Bool
     
     @Environment(\.colorScheme) var colorScheme
     
@@ -113,7 +114,9 @@ struct DropdownMenuView: View {
         Button(action: {
             if !item.disabled {
                 onSelect(item)
-                isOpen = false
+                if !persistOnClick {
+                    isOpen = false
+                }
             }
         }) {
             HStack(spacing: 8) {
@@ -200,7 +203,7 @@ struct DropdownMenuOverlay: View {
                 }
             
             // Dropdown menu
-            DropdownMenuView(items: items, onSelect: onSelect, isOpen: $isOpen)
+            DropdownMenuView(items: items, onSelect: onSelect, isOpen: $isOpen, persistOnClick: false)
                 .expandIn(isVisible: mounted)
                 .position(
                     x: buttonFrame.midX,

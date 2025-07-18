@@ -38,7 +38,7 @@ public struct GlassmorphicChatbar: View {
                             // Tool dropdown - aligned to leading edge
                             if state.isToolMenuOpen {
                                 HStack {
-                                    DropdownMenuView(items: state.toolMenuItems, onSelect: handleToolSelect, isOpen: $state.isToolMenuOpen)
+                                    DropdownMenuView(items: state.toolMenuItems, onSelect: handleToolSelect, isOpen: $state.isToolMenuOpen, persistOnClick: true)
                                         .frame(width: 180)
                                         .padding(.leading, 12) // Match footer button padding
                                     Spacer()
@@ -52,7 +52,7 @@ public struct GlassmorphicChatbar: View {
                             if state.isViewMenuOpen {
                                 HStack {
                                     Spacer()
-                                    DropdownMenuView(items: state.viewMenuItems, onSelect: handleViewSelect, isOpen: $state.isViewMenuOpen)
+                                    DropdownMenuView(items: state.viewMenuItems, onSelect: handleViewSelect, isOpen: $state.isViewMenuOpen, persistOnClick: false)
                                         .frame(width: 180)
                                         .padding(.trailing, 12) // Match footer button padding
                                 }
@@ -565,7 +565,6 @@ public struct GlassmorphicChatbar: View {
     
     private func handleToolSelect(_ tool: MenuItem) {
         state.activeTool = state.activeTool?.id == tool.id ? nil : tool
-        state.isToolMenuOpen = false
         isInputFocused = true
     }
     
