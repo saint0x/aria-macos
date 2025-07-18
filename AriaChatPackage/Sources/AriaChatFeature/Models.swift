@@ -127,6 +127,12 @@ class GlassmorphicChatbarState: ObservableObject {
     // Registry service for dynamic loading
     private let registryService = RegistryService.shared
     
+    // Fallback menu items when registry loading fails
+    private let fallbackToolMenuItems: [MenuItem] = [
+        MenuItem(id: "loading-tools", name: "Loading Tools...", category: .tools, disabled: true),
+        MenuItem(id: "loading-agents", name: "Loading Agents...", category: .agents, disabled: true)
+    ]
+    
     let viewMenuItems: [MenuItem]
     
     init() {
@@ -139,6 +145,9 @@ class GlassmorphicChatbarState: ObservableObject {
         ]
         self.viewMenuItems = items
         self.activeView = items[0]
+        
+        // Start with fallback items to prevent empty menu
+        self.toolMenuItems = fallbackToolMenuItems
         
         // Load dynamic tool menu items
         loadToolMenuItems()
@@ -177,18 +186,43 @@ class GlassmorphicChatbarState: ObservableObject {
                     
                     // TODO: Add teams and pipelines when available from backend
                     
-                    self.toolMenuItems = menuItems
-                    print("GlassmorphicChatbarState: Loaded \(menuItems.count) dynamic tool menu items")
+                    // Only update if we got items, otherwise keep fallback
+                    if !menuItems.isEmpty {
+                        self.toolMenuItems = menuItems
+                        print("GlassmorphicChatbarState: Loaded \(menuItems.count) dynamic tool menu items")
+                    } else {
+                        // Create a "no items available" state
+                        self.toolMenuItems = [
+                            MenuItem(id: "no-tools", name: "No Tools Available", category: .tools, disabled: true),
+                            MenuItem(id: "no-agents", name: "No Agents Available", category: .agents, disabled: true)
+                        ]
+                        print("GlassmorphicChatbarState: No tool menu items loaded, showing empty state")
+                    }
                 }
                 
             } catch {
                 print("GlassmorphicChatbarState: Error loading tool menu items: \(error)")
-                // Fall back to empty array or keep existing items
+                await MainActor.run {
+                    // Show error state
+                    self.toolMenuItems = [
+                        MenuItem(id: "error-tools", name: "Failed to Load Tools", category: .tools, disabled: true),
+                        MenuItem(id: "retry-tools", name: "Retry Loading", category: .tools)
+                    ]
+                }
             }
         }
     }
     
     public func refreshToolMenuItems() {
+        // Reset to loading state
+        self.toolMenuItems = fallbackToolMenuItems
         loadToolMenuItems()
+    }
+    
+    public func handleToolMenuItemSelection(_ item: MenuItem) {
+        if item.id == "retry-tools" {
+            refreshToolMenuItems()
+        }
+        // Handle other menu item selections here
     }
 }

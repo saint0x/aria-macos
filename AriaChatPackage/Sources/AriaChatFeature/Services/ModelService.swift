@@ -29,7 +29,8 @@ public class ModelService: ObservableObject {
         
         do {
             let response: ModelProviderResponse = try await apiClient.get(
-                endpoint: APIEndpoints.modelProviders
+                APIEndpoints.modelProviders,
+                type: ModelProviderResponse.self
             )
             
             self.providers = response.data.providers
@@ -61,7 +62,8 @@ public class ModelService: ObservableObject {
         
         do {
             let response: ProviderModelsResponse = try await apiClient.get(
-                endpoint: APIEndpoints.providerModels(provider)
+                APIEndpoints.providerModels(provider),
+                type: ProviderModelsResponse.self
             )
             
             self.providerModels[provider] = response.data.models
@@ -79,14 +81,14 @@ public class ModelService: ObservableObject {
     public func loadAllProviderModels(refresh: Bool = false) async throws {
         let configuredProviders = providers.filter { $0.isConfigured }
         
-        await withThrowingTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup(of: Void.self) { group in
             for provider in configuredProviders {
                 group.addTask {
                     try await self.loadModels(for: provider.name, refresh: refresh)
                 }
             }
             
-            for await _ in group {}
+            for try await _ in group {}
         }
     }
     
@@ -101,8 +103,9 @@ public class ModelService: ObservableObject {
         
         do {
             let _: APIResponse<EmptyResponse> = try await apiClient.post(
-                endpoint: APIEndpoints.selectModel,
-                body: request
+                APIEndpoints.selectModel,
+                body: request,
+                type: APIResponse<EmptyResponse>.self
             )
             
             if setAsDefault {
@@ -137,8 +140,9 @@ public class ModelService: ObservableObject {
         
         do {
             let response: TestModelResponse = try await apiClient.post(
-                endpoint: APIEndpoints.testModel,
-                body: request
+                APIEndpoints.testModel,
+                body: request,
+                type: TestModelResponse.self
             )
             
             print("ModelService: Test completed for \(model) - latency: \(response.latencyMs)ms")

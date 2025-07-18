@@ -16,7 +16,8 @@ public class ObservabilityService: ObservableObject {
     @Published public var healthError: Error?
     
     private let apiClient = RESTAPIClient.shared
-    private var logStreamTask: Task<Void, Never>?
+    private let streamingClient = StreamingClient()
+    private var logStreamHandle: StreamHandle?
     
     private init() {}
     
@@ -49,8 +50,9 @@ public class ObservabilityService: ObservableObject {
             )
             
             let response: RecentLogsResponse = try await apiClient.get(
-                endpoint: APIEndpoints.logsRecent,
-                queryParams: queryParams
+                APIEndpoints.logsRecent,
+                queryItems: queryParams,
+                type: RecentLogsResponse.self
             )
             
             self.logs = response.data.logs
@@ -74,25 +76,43 @@ public class ObservabilityService: ObservableObject {
         isStreamingLogs = true
         logsError = nil
         
-        logStreamTask = Task {
+        Task {
             do {
                 let queryParams = APIEndpoints.QueryParams.logsStream(
                     filterComponents: filterComponents,
                     sessionId: sessionId
                 )
                 
-                try await apiClient.streamSSE(
-                    endpoint: APIEndpoints.logsStream,
-                    queryParams: queryParams
-                ) { [weak self] eventData in
-                    await MainActor.run {
-                        self?.handleLogStreamEvent(eventData)
+                // Build URL for streaming  
+                let baseURL = URL(string: "https://overcast.whoisaria.co/api/v1")! // TODO: Use RESTAPIClient base URL
+                var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true)!
+                components.path = components.path + APIEndpoints.logsStream
+                components.queryItems = queryParams
+                let streamURL = components.url!
+                
+                let handle = await streamingClient.stream(
+                    url: streamURL,
+                    onEvent: { [weak self] event in
+                        await MainActor.run {
+                            self?.handleLogStreamSSEEvent(event)
+                        }
+                    },
+                    onError: { [weak self] error in
+                        Task { @MainActor in
+                            print("ObservabilityService: Log streaming error: \(error)")
+                            self?.logsError = error
+                            self?.isStreamingLogs = false
+                        }
                     }
+                )
+                
+                await MainActor.run {
+                    self.logStreamHandle = handle
                 }
                 
             } catch {
                 await MainActor.run {
-                    print("ObservabilityService: Log streaming error: \(error)")
+                    print("ObservabilityService: Log streaming setup error: \(error)")
                     self.logsError = error
                     self.isStreamingLogs = false
                 }
@@ -101,14 +121,20 @@ public class ObservabilityService: ObservableObject {
     }
     
     public func stopLogStreaming() {
-        logStreamTask?.cancel()
-        logStreamTask = nil
-        isStreamingLogs = false
+        Task {
+            await logStreamHandle?.cancel()
+            await MainActor.run {
+                self.logStreamHandle = nil
+                self.isStreamingLogs = false
+            }
+        }
     }
     
-    private func handleLogStreamEvent(_ eventData: Data) {
+    private func handleLogStreamSSEEvent(_ event: SSEEvent) {
+        guard let data = event.data.data(using: .utf8) else { return }
+        
         do {
-            let streamEvent = try JSONDecoder().decode(LogStreamEvent.self, from: eventData)
+            let streamEvent = try JSONDecoder().decode(LogStreamEvent.self, from: data)
             
             if streamEvent.type == "log" {
                 logs.insert(streamEvent.entry, at: 0)
@@ -135,7 +161,8 @@ public class ObservabilityService: ObservableObject {
         
         do {
             let response: MetricsResponse = try await apiClient.get(
-                endpoint: APIEndpoints.metrics
+                APIEndpoints.metrics,
+                type: MetricsResponse.self
             )
             
             self.metrics = response.data
@@ -162,7 +189,8 @@ public class ObservabilityService: ObservableObject {
         
         do {
             let response: HealthResponse = try await apiClient.get(
-                endpoint: APIEndpoints.health
+                APIEndpoints.health,
+                type: HealthResponse.self
             )
             
             self.health = response.data
@@ -255,7 +283,7 @@ public class ObservabilityService: ObservableObject {
     // MARK: - Refresh All
     
     public func refreshAll() async throws {
-        await withThrowingTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 try await self.loadRecentLogs(refresh: true)
             }
@@ -268,13 +296,14 @@ public class ObservabilityService: ObservableObject {
                 try await self.loadHealth(refresh: true)
             }
             
-            for await _ in group {}
+            for try await _ in group {}
         }
     }
     
     // MARK: - Cleanup
     
     deinit {
-        stopLogStreaming()
+        // Note: Cannot call stopLogStreaming() from deinit as it's a main actor method
+        // Stream cleanup will happen automatically when the handle is released
     }
 }

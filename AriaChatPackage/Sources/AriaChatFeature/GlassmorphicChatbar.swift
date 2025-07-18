@@ -280,11 +280,17 @@ public struct GlassmorphicChatbar: View {
             
             // View dropdown
             Button(action: { 
+                print("GlassmorphicChatbar: View button clicked - showAiChatFlow: \(state.showAiChatFlow), isViewMenuOpen: \(state.isViewMenuOpen)")
+                
+                // Always show the dropdown menu when clicked
+                state.isViewMenuOpen.toggle()
+                print("GlassmorphicChatbar: View menu toggled to: \(state.isViewMenuOpen)")
+                
+                // If AI chat flow is active, also switch to task view
                 if state.showAiChatFlow {
                     state.activeView = state.viewMenuItems.first { $0.id == "taskListView" } ?? state.viewMenuItems[0]
                     state.showAiChatFlow = false
-                } else {
-                    state.isViewMenuOpen.toggle()
+                    print("GlassmorphicChatbar: Switched from AI flow to task view")
                 }
             }) {
                 HStack(spacing: 6) {

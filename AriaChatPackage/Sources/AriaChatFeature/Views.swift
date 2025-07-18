@@ -81,7 +81,7 @@ struct TaskListView: View {
         // Generate a meaningful title from task metadata
         let title = generateTaskTitle(from: taskResponse)
         
-        AriaTask(
+        return AriaTask(
             id: taskResponse.id,
             title: title,
             detailIdentifier: taskResponse.sessionId ?? "",
@@ -271,7 +271,7 @@ struct LoggingView: View {
         timeframeOptions.first { $0.0 == selectedTimeframe }?.1 ?? "Last 7 days"
     }
     
-    var filteredLogs: [APIModels.LogEntry] {
+    var filteredLogs: [LogEntry] {
         observabilityService.logs
     }
     
@@ -414,7 +414,7 @@ struct LoggingView: View {
     }
 }
 
-struct LogEntry: Identifiable {
+struct LocalLogEntry: Identifiable {
     let id = UUID()
     let timestamp: Date
     let level: String
@@ -424,7 +424,7 @@ struct LogEntry: Identifiable {
 }
 
 struct LogEntryRow: View {
-    let entry: LogEntry
+    let entry: LocalLogEntry
     @State private var isExpanded = false
     @State private var isHovered = false
     @Environment(\.colorScheme) var colorScheme
@@ -517,7 +517,7 @@ struct LogEntryRow: View {
 
 // MARK: - Real-time Log Entry Row for API LogEntry
 struct RealTimeLogEntryRow: View {
-    let entry: APIModels.LogEntry
+    let entry: LogEntry
     @State private var isExpanded = false
     @State private var isHovered = false
     @Environment(\.colorScheme) var colorScheme

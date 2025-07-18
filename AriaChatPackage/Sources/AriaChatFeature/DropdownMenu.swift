@@ -58,15 +58,29 @@ struct DropdownMenuView: View {
     
     var body: some View {
         let menuContent = VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                menuItemView(for: item)
-                    .opacity(mounted ? 1 : 0)
-                    .scaleEffect(mounted ? 1 : 0.97)
-                    .animation(
-                        AnimationSystem.gentleTransition // Use gentleTransition as per SWIFT2.md
-                            .delay(Double(index) * 0.02), // Stagger animation  
-                        value: mounted
-                    )
+            if items.isEmpty {
+                // Empty state handling
+                HStack {
+                    Image(systemName: "clock")
+                        .foregroundColor(Color.textTertiary(for: colorScheme))
+                        .font(.system(size: 14))
+                    Text("Loading...")
+                        .font(.textSM)
+                        .foregroundColor(Color.textTertiary(for: colorScheme))
+                }
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+            } else {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    menuItemView(for: item)
+                        .opacity(mounted ? 1 : 0)
+                        .scaleEffect(mounted ? 1 : 0.97)
+                        .animation(
+                            AnimationSystem.gentleTransition // Use gentleTransition as per SWIFT2.md
+                                .delay(Double(index) * 0.02), // Stagger animation  
+                            value: mounted
+                        )
+                }
             }
         }
         .padding(6)

@@ -38,8 +38,9 @@ public class RegistryService: ObservableObject {
             )
             
             let response: ToolRegistryResponse = try await apiClient.get(
-                endpoint: APIEndpoints.toolsRegistry,
-                queryParams: queryParams
+                APIEndpoints.toolsRegistry,
+                queryItems: queryParams,
+                type: ToolRegistryResponse.self
             )
             
             self.tools = response.data.tools
@@ -57,7 +58,8 @@ public class RegistryService: ObservableObject {
     public func getToolDetails(_ name: String) async throws -> Tool? {
         do {
             let response: Tool = try await apiClient.get(
-                endpoint: APIEndpoints.toolDetails(name)
+                APIEndpoints.toolDetails(name),
+                type: Tool.self
             )
             return response
         } catch {
@@ -83,8 +85,9 @@ public class RegistryService: ObservableObject {
             let queryParams = APIEndpoints.QueryParams.agentsRegistry(search: search)
             
             let response: AgentRegistryResponse = try await apiClient.get(
-                endpoint: APIEndpoints.agentsRegistry,
-                queryParams: queryParams
+                APIEndpoints.agentsRegistry,
+                queryItems: queryParams,
+                type: AgentRegistryResponse.self
             )
             
             self.agents = response.data.agents
@@ -102,11 +105,30 @@ public class RegistryService: ObservableObject {
     // MARK: - Utility Methods
     
     public func getAvailableTools() -> [Tool] {
-        return tools.filter { $0.isAvailable }
+        let availableTools = tools.filter { $0.isAvailable ?? true }
+        
+        // Filter to only show custom/user-created tools (exclude builtin system tools)
+        let customTools = availableTools.filter { tool in
+            switch tool.source.type {
+            case "bundle", "custom":
+                return true  // Include user bundles and custom container tools
+            case "builtin":
+                return false // Exclude built-in system tools
+            default:
+                return false // Exclude unknown types
+            }
+        }
+        
+        print("RegistryService: Filtered to \(customTools.count) custom tools from \(availableTools.count) total available tools")
+        for tool in customTools {
+            print("RegistryService: Custom tool: \(tool.name) (source: \(tool.source.type))")
+        }
+        
+        return customTools
     }
     
     public func getAvailableAgents() -> [Agent] {
-        return agents.filter { $0.isAvailable }
+        return agents.filter { $0.isAvailable ?? true }
     }
     
     public func getToolsByCategory(_ category: String) -> [Tool] {
@@ -144,7 +166,7 @@ public class RegistryService: ObservableObject {
     // MARK: - Refresh All
     
     public func refreshAll() async throws {
-        await withThrowingTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 try await self.loadTools(refresh: true)
             }
@@ -153,7 +175,7 @@ public class RegistryService: ObservableObject {
                 try await self.loadAgents(refresh: true)
             }
             
-            for await _ in group {}
+            for try await _ in group {}
         }
     }
 }

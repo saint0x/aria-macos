@@ -143,14 +143,14 @@ public struct UploadBundleResponse: Codable, Sendable {
     public let checksum: String
 }
 
-// MARK: - Tool & Agent Registry Models
+// MARK: - Tool & Agent Registry Models (Updated for API v1)
 
 public struct ToolRegistryResponse: Codable, Sendable {
     public let data: ToolRegistryData
 }
 
 public struct ToolRegistryData: Codable, Sendable {
-    public let totalCount: Int
+    public let totalCount: Int?
     public let tools: [Tool]
     
     private enum CodingKeys: String, CodingKey {
@@ -166,16 +166,17 @@ public struct Tool: Codable, Sendable, Identifiable {
     public let scope: String
     public let parameters: [String: AnyCodable]?
     public let capabilities: [String]
-    public let securityLevel: String
+    public let securityLevel: String?
     public let source: ToolSource
     public let version: String
-    public let isAvailable: Bool
+    public let isAvailable: Bool?
     
     public var id: String { name }
     
     private enum CodingKeys: String, CodingKey {
-        case name, description, category, scope, parameters, capabilities, source, version
+        case name, description, category, scope, parameters, capabilities
         case securityLevel = "security_level"
+        case source, version
         case isAvailable = "is_available"
     }
 }
@@ -184,11 +185,47 @@ public struct ToolSource: Codable, Sendable {
     public let type: String
     public let bundleId: String?
     public let bundlePath: String?
+    public let containerId: String?
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        
+        // Handle discriminated union based on type
+        switch type {
+        case "builtin":
+            bundleId = nil
+            bundlePath = nil
+            containerId = nil
+        case "bundle":
+            bundleId = try container.decodeIfPresent(String.self, forKey: .bundleId)
+            bundlePath = try container.decodeIfPresent(String.self, forKey: .bundlePath)
+            containerId = nil
+        case "custom":
+            bundleId = nil
+            bundlePath = nil
+            containerId = try container.decodeIfPresent(String.self, forKey: .containerId)
+        default:
+            // Unknown type, make everything optional
+            bundleId = try container.decodeIfPresent(String.self, forKey: .bundleId)
+            bundlePath = try container.decodeIfPresent(String.self, forKey: .bundlePath)
+            containerId = try container.decodeIfPresent(String.self, forKey: .containerId)
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(bundleId, forKey: .bundleId)
+        try container.encodeIfPresent(bundlePath, forKey: .bundlePath)
+        try container.encodeIfPresent(containerId, forKey: .containerId)
+    }
     
     private enum CodingKeys: String, CodingKey {
         case type
         case bundleId = "bundle_id"
         case bundlePath = "bundle_path"
+        case containerId = "container_id"
     }
 }
 
@@ -197,7 +234,7 @@ public struct AgentRegistryResponse: Codable, Sendable {
 }
 
 public struct AgentRegistryData: Codable, Sendable {
-    public let totalCount: Int
+    public let totalCount: Int?
     public let agents: [Agent]
     
     private enum CodingKeys: String, CodingKey {
@@ -210,10 +247,10 @@ public struct Agent: Codable, Sendable, Identifiable {
     public let name: String
     public let description: String
     public let capabilities: [String]
-    public let supportedTasks: [String]
+    public let supportedTasks: [String]?
     public let source: ToolSource
     public let version: String
-    public let isAvailable: Bool
+    public let isAvailable: Bool?
     
     public var id: String { name }
     
