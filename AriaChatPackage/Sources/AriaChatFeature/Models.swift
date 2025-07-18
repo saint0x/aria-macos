@@ -9,6 +9,43 @@ enum StepType {
     case response
 }
 
+// MARK: - Execution Context Models
+struct ThinkingStep: Codable, Identifiable {
+    let id: String
+    let step: Int
+    let type: String
+    let content: String
+    let confidence: Double?
+    let timestamp: Date?
+    
+    public init(id: String = UUID().uuidString, step: Int, type: String, content: String, confidence: Double? = nil, timestamp: Date? = nil) {
+        self.id = id
+        self.step = step
+        self.type = type
+        self.content = content
+        self.confidence = confidence
+        self.timestamp = timestamp
+    }
+}
+
+struct ExecutionContext: Codable {
+    let duration_ms: Int?
+    let memory_used: String?
+    let tokens_consumed: Int?
+    let cpu_percent: Double?
+    let execution_time_ms: Int?
+    let inputValidation: String?
+    
+    public init(duration_ms: Int? = nil, memory_used: String? = nil, tokens_consumed: Int? = nil, cpu_percent: Double? = nil, execution_time_ms: Int? = nil, inputValidation: String? = nil) {
+        self.duration_ms = duration_ms
+        self.memory_used = memory_used
+        self.tokens_consumed = tokens_consumed
+        self.cpu_percent = cpu_percent
+        self.execution_time_ms = execution_time_ms
+        self.inputValidation = inputValidation
+    }
+}
+
 enum StepStatus: String {
     case active
     case completed
@@ -27,6 +64,12 @@ struct EnhancedStep: Identifiable {
     var toolParameters: [String: String]?
     var toolResult: String?
     var errorMessage: String?
+    
+    // Rich SSE metadata for details pane
+    var detailedResults: [String: Any]?
+    var thinkingSteps: [ThinkingStep]?
+    var executionContext: ExecutionContext?
+    var rawResultJSON: [String: Any]?
     
     /// Computed property to determine if this step should be visible in the main chat
     var isVisibleInMainChat: Bool {

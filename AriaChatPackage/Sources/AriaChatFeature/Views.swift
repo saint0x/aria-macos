@@ -865,6 +865,7 @@ struct StepDetailPane: View {
     let step: EnhancedStep
     let onClose: () -> Void
     let tasks: [AriaTask]
+    let aiSteps: [EnhancedStep]
     
     @State private var viewMode: ViewMode = .richText
     @State private var expandedSections = Set<String>()
@@ -876,7 +877,7 @@ struct StepDetailPane: View {
     }
     
     var detailContent: StepDetailsContent? {
-        getStepDetailsContent(for: step, tasks: tasks)
+        getStepDetailsContent(for: step, tasks: tasks, aiSteps: aiSteps)
     }
     
     var title: String {
@@ -914,7 +915,7 @@ struct StepDetailPane: View {
             if let content = detailContent {
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Accordion sections
+                        // Accordion sections - reordered: Input → Output → Summary
                         AccordionSection(
                             title: content.isAiStep ? "Input" : "Task Details",
                             content: content.input,
@@ -927,23 +928,23 @@ struct StepDetailPane: View {
                         Divider()
                         
                         AccordionSection(
-                            title: content.isAiStep ? "Thinking Process" : "Progress & Status",
-                            content: content.thinking,
-                            viewMode: $viewMode,
-                            isExpanded: expandedSections.contains("thinking")
-                        ) {
-                            toggleSection("thinking")
-                        }
-                        
-                        Divider()
-                        
-                        AccordionSection(
                             title: content.isAiStep ? "Output" : "Additional Info",
                             content: content.output,
                             viewMode: $viewMode,
                             isExpanded: expandedSections.contains("output")
                         ) {
                             toggleSection("output")
+                        }
+                        
+                        Divider()
+                        
+                        AccordionSection(
+                            title: content.isAiStep ? "Summary" : "Progress & Status",
+                            content: content.thinking,
+                            viewMode: $viewMode,
+                            isExpanded: expandedSections.contains("thinking")
+                        ) {
+                            toggleSection("thinking")
                         }
                     }
                 }
@@ -983,8 +984,8 @@ struct StepDetailPane: View {
         .glassmorphic(cornerRadius: 16)
         .appleShadow()
         .onAppear {
-            // Default expand first section
-            expandedSections.insert("input")
+            // Default expand output section
+            expandedSections.insert("output")
         }
     }
     
@@ -1088,7 +1089,29 @@ struct SectionContent {
     let jsonData: [String: Any]
     
     var jsonString: String {
-        guard let data = try? JSONSerialization.data(withJSONObject: jsonData, options: .prettyPrinted),
+        // Create a safe copy of jsonData with only JSON-serializable types
+        let safeJsonData = jsonData.compactMapValues { value -> Any? in
+            // Convert non-JSON-serializable types to strings
+            switch value {
+            case let stringValue as String:
+                return stringValue
+            case let intValue as Int:
+                return intValue
+            case let doubleValue as Double:
+                return doubleValue
+            case let boolValue as Bool:
+                return boolValue
+            case let arrayValue as [Any]:
+                return arrayValue
+            case let dictValue as [String: Any]:
+                return dictValue
+            default:
+                // Convert any other type to string representation
+                return String(describing: value)
+            }
+        }
+        
+        guard let data = try? JSONSerialization.data(withJSONObject: safeJsonData, options: .prettyPrinted),
               let string = String(data: data, encoding: .utf8) else {
             return "{}"
         }
@@ -1105,41 +1128,115 @@ struct StepDetailsContent {
 }
 
 // Helper function to get step details content
-func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDetailsContent? {
+func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask], aiSteps: [EnhancedStep]) -> StepDetailsContent? {
+    
+    // Find the user input that triggered this response
+    func findUserInput() -> String {
+        if let stepIndex = aiSteps.firstIndex(where: { $0.id == step.id }) {
+            // Look backwards for the last user message
+            for i in stride(from: stepIndex, through: 0, by: -1) {
+                if aiSteps[i].type == .userMessage {
+                    return aiSteps[i].text
+                }
+            }
+        }
+        return "No user input found"
+    }
+    
+    // Generate summary from thinking steps, execution context, or metadata
+    func generateSummary() -> (text: String, json: [String: Any]) {
+        var summaryText = "No processing information available"
+        var summaryJson: [String: Any] = [:]
+        
+        // Prioritize reasoning field from metadata if available
+        if let metadata = step.metadata, let reasoning = metadata.reasoning {
+            summaryText = reasoning
+            summaryJson = ["reasoning": reasoning]
+        } else if let thinkingSteps = step.thinkingSteps, !thinkingSteps.isEmpty {
+            summaryText = "Thinking Steps:\n"
+            var stepsArray: [[String: Any]] = []
+            
+            for thinking in thinkingSteps {
+                let confidenceText = thinking.confidence != nil ? String(format: " (%.1f%% confidence)", thinking.confidence! * 100) : ""
+                summaryText += "\n\(thinking.step). \(thinking.type): \(thinking.content)\(confidenceText)"
+                
+                var stepData: [String: Any] = [
+                    "step": thinking.step,
+                    "type": thinking.type,
+                    "content": thinking.content
+                ]
+                if let confidence = thinking.confidence {
+                    stepData["confidence"] = confidence
+                }
+                stepsArray.append(stepData)
+            }
+            summaryJson["thinking_steps"] = stepsArray
+        }
+        
+        // Add execution context if available (and not already handled by reasoning)
+        if let context = step.executionContext {
+            // Only add execution context if we don't already have reasoning
+            if step.metadata?.reasoning == nil {
+                summaryText += "\n\nExecution Context:"
+                if let duration = context.duration_ms {
+                    summaryText += "\n  Duration: \(duration)ms"
+                }
+                if let memory = context.memory_used {
+                    summaryText += "\n  Memory Used: \(memory)"
+                }
+                if let tokens = context.tokens_consumed {
+                    summaryText += "\n  Tokens: \(tokens)"
+                }
+            }
+            
+            var contextData: [String: Any] = [:]
+            if let duration = context.duration_ms { contextData["duration_ms"] = duration }
+            if let memory = context.memory_used { contextData["memory_used"] = memory }
+            if let tokens = context.tokens_consumed { contextData["tokens_consumed"] = tokens }
+            if let cpu = context.cpu_percent { contextData["cpu_percent"] = cpu }
+            if let validation = context.inputValidation { contextData["inputValidation"] = validation }
+            
+            if !contextData.isEmpty {
+                summaryJson["execution_context"] = contextData
+            }
+        }
+        
+        if summaryText == "No processing information available" {
+            summaryText = "Step Status: \(step.status.rawValue)"
+            summaryJson = ["status": step.status.rawValue, "type": String(describing: step.type)]
+        }
+        
+        return (summaryText, summaryJson)
+    }
+    
+    // Handle special task details
     if step.text.hasPrefix("TASK_DETAIL_") {
         let taskId = step.text.replacingOccurrences(of: "TASK_DETAIL_", with: "")
         if let task = tasks.first(where: { $0.id == taskId }) {
             return StepDetailsContent(
                 input: SectionContent(
-                    richText: "Task Name: \(task.title)\nStatus: \(task.status.rawValue)\nTimestamp: \(task.timestamp)",
-                    jsonData: ["title": task.title, "status": task.status.rawValue, "id": task.id]
+                    richText: "Task: \(task.title)",
+                    jsonData: ["title": task.title, "id": task.id]
                 ),
                 thinking: SectionContent(
-                    richText: "Current progress information",
-                    jsonData: ["progress": "In progress"]
+                    richText: "Task Status: \(task.status.rawValue)\nCreated: \(task.timestamp)",
+                    jsonData: ["status": task.status.rawValue, "timestamp": task.timestamp]
                 ),
                 output: SectionContent(
-                    richText: "Task ID: \(task.id)",
-                    jsonData: ["id": task.id]
+                    richText: "Task ID: \(task.id)\nDetail Identifier: \(task.detailIdentifier)",
+                    jsonData: ["id": task.id, "detailIdentifier": task.detailIdentifier]
                 ),
                 taskStatus: task.status.rawValue,
                 isAiStep: false
             )
         }
-    } else if step.type == .tool {
-        // Format parameters
-        var parametersText = "Tool: \(step.toolName ?? "Unknown")\nStatus: \(step.status.rawValue)"
-        var parametersJson: [String: Any] = ["toolName": step.toolName ?? "", "status": step.status.rawValue]
+    }
+    
+    // Handle tool steps
+    if step.type == .tool {
+        let userInput = findUserInput()
+        let summary = generateSummary()
         
-        if let params = step.toolParameters, !params.isEmpty {
-            parametersText += "\n\nParameters:"
-            parametersJson["parameters"] = params
-            for (key, value) in params {
-                parametersText += "\n  \(key): \(value)"
-            }
-        }
-        
-        // Format results
         var outputText = "Tool execution "
         var outputJson: [String: Any] = [:]
         
@@ -1150,8 +1247,7 @@ func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDet
                 outputJson["error"] = error
             }
         } else if let result = step.toolResult {
-            outputText = "Result:\n\(result)"
-            // Try to parse as JSON for better display
+            outputText = result
             if let data = result.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) {
                 outputJson["result"] = json
@@ -1166,12 +1262,12 @@ func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDet
         
         return StepDetailsContent(
             input: SectionContent(
-                richText: parametersText,
-                jsonData: parametersJson
+                richText: userInput,
+                jsonData: ["userInput": userInput]
             ),
             thinking: SectionContent(
-                richText: "Status: \(step.status.rawValue)\nExecution: \(step.text)",
-                jsonData: ["status": step.status.rawValue, "execution": step.text]
+                richText: summary.text,
+                jsonData: summary.json
             ),
             output: SectionContent(
                 richText: outputText,
@@ -1182,19 +1278,22 @@ func getStepDetailsContent(for step: EnhancedStep, tasks: [AriaTask]) -> StepDet
         )
     }
     
-    // Default for other step types
+    // Handle AI responses and other steps
+    let userInput = findUserInput()
+    let summary = generateSummary()
+    
     return StepDetailsContent(
         input: SectionContent(
-            richText: "Details for: \(step.text)",
-            jsonData: ["text": step.text]
+            richText: userInput,
+            jsonData: ["userInput": userInput]
         ),
         thinking: SectionContent(
-            richText: "Processing information",
-            jsonData: ["processing": true]
+            richText: summary.text,
+            jsonData: summary.json
         ),
         output: SectionContent(
-            richText: "No specific output",
-            jsonData: [:]
+            richText: step.text,
+            jsonData: ["response": step.text, "stepId": step.id]
         ),
         taskStatus: nil,
         isAiStep: true

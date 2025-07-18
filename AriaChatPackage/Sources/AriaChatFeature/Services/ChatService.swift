@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 
-/// Manages chat interactions and AI responses via REST API ExecuteTurn
+/// Manages chat interactions and AI responses via SSE streaming
 @MainActor
 public class ChatService: ObservableObject {
     public static let shared = ChatService()
@@ -11,7 +11,6 @@ public class ChatService: ObservableObject {
     @Published public private(set) var processingComplete = false
     @Published public private(set) var chatError: Error?
     
-    private let apiClient = RESTAPIClient.shared
     private let streamingClient = StreamingClient()
     private let sessionManager = SessionManager.shared
     
@@ -249,7 +248,7 @@ public class ChatService: ObservableObject {
             id: UUID().uuidString,
             role: .assistant,
             content: "Understood, I'll help you with that.",
-            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "status")
+            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "status", reasoning: "Acknowledged user request and preparing to process")
         )))
         
         try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
@@ -259,7 +258,7 @@ public class ChatService: ObservableObject {
             id: UUID().uuidString,
             role: .thought,
             content: "Analyzing the request and determining the best approach...",
-            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "thinking")
+            metadata: MessageMetadata(isStatus: true, isFinal: false, messageType: "thinking", reasoning: "Analyzing request to determine optimal response strategy")
         )))
         
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s

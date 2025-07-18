@@ -50,6 +50,24 @@ public struct MessageMetadata: Codable, Sendable {
     public let isStatus: Bool
     public let isFinal: Bool
     public let messageType: String
+    public let detailedResults: [String: AnyCodable]?
+    public let reasoning: String?
+    
+    public init(isStatus: Bool, isFinal: Bool, messageType: String, detailedResults: [String: AnyCodable]? = nil, reasoning: String? = nil) {
+        self.isStatus = isStatus
+        self.isFinal = isFinal
+        self.messageType = messageType
+        self.detailedResults = detailedResults
+        self.reasoning = reasoning
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case isStatus = "is_status"
+        case isFinal = "is_final"
+        case messageType = "message_type"
+        case detailedResults = "detailed_results"
+        case reasoning = "reasoning"
+    }
 }
 
 public struct SSEMessageEvent: Codable, Sendable {

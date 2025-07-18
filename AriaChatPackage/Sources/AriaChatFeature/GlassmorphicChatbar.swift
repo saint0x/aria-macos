@@ -77,7 +77,8 @@ public struct GlassmorphicChatbar: View {
                 StepDetailPane(
                     step: selectedItem,
                     onClose: { state.selectedItemForDetail = nil },
-                    tasks: state.mockTasks
+                    tasks: state.mockTasks,
+                    aiSteps: state.aiSteps
                 )
                 .offset(x: (maxWidth / 2) + (320 / 2) + 16) // Fixed position: half chatbar + half pane + gap
                 .slideInFromRight(isVisible: true)
@@ -416,7 +417,59 @@ public struct GlassmorphicChatbar: View {
                             break
                         }
                         
-                        let step = EnhancedStep(
+                        // Extract rich metadata from detailed_results
+                        var detailedResults: [String: Any]?
+                        var thinkingSteps: [ThinkingStep]?
+                        var executionContext: ExecutionContext?
+                        
+                        if let meta = message.metadata,
+                           let detailsData = meta.detailedResults {
+                            // Convert AnyCodable to Any for processing by encoding/decoding
+                            do {
+                                let encoder = JSONEncoder()
+                                let decoder = JSONDecoder()
+                                let jsonData = try encoder.encode(detailsData)
+                                if let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
+                                    detailedResults = jsonObject
+                                    
+                                    // Extract thinking steps from detailed_results.thoughts
+                                    if let thoughts = jsonObject["thoughts"] as? [[String: Any]] {
+                                        thinkingSteps = thoughts.compactMap { thoughtData in
+                                            guard let step = thoughtData["step"] as? Int,
+                                                  let type = thoughtData["type"] as? String,
+                                                  let content = thoughtData["content"] as? String else {
+                                                return nil
+                                            }
+                                            
+                                            let confidence = thoughtData["confidence"] as? Double
+                                            return ThinkingStep(
+                                                step: step,
+                                                type: type,
+                                                content: content,
+                                                confidence: confidence,
+                                                timestamp: Date()
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Extract execution context if available
+                                    if let contextData = jsonObject["executionContext"] as? [String: Any] {
+                                        executionContext = ExecutionContext(
+                                            duration_ms: contextData["duration_ms"] as? Int,
+                                            memory_used: contextData["memory_used"] as? String,
+                                            tokens_consumed: contextData["tokens_consumed"] as? Int,
+                                            cpu_percent: contextData["cpu_percent"] as? Double,
+                                            execution_time_ms: contextData["execution_time_ms"] as? Int,
+                                            inputValidation: contextData["inputValidation"] as? String
+                                        )
+                                    }
+                                }
+                            } catch {
+                                print("Error converting AnyCodable to Any: \(error)")
+                            }
+                        }
+                        
+                        var step = EnhancedStep(
                             id: "msg-\(message.id)",
                             type: self.mapMessageRoleToStepType(message.role),
                             text: message.content,
@@ -424,11 +477,51 @@ public struct GlassmorphicChatbar: View {
                             metadata: message.metadata
                         )
                         
+                        // Assign rich metadata
+                        step.detailedResults = detailedResults
+                        step.thinkingSteps = thinkingSteps
+                        step.executionContext = executionContext
+                        
                         // Debug logging for metadata
                         if let meta = message.metadata {
-                            print("Message: '\(message.content.prefix(50))...' - Metadata: isStatus=\(meta.isStatus), isFinal=\(meta.isFinal), messageType=\(meta.messageType)")
+                            print("🔍 Message: '\(message.content.prefix(50))...' - Metadata: isStatus=\(meta.isStatus), isFinal=\(meta.isFinal), messageType=\(meta.messageType)")
+                            
+                            // Log detailed results structure
+                            if let detailsData = meta.detailedResults {
+                                print("📊 DetailedResults keys: \(Array(detailsData.keys))")
+                                
+                                // Log specific fields we're looking for
+                                if detailsData["thoughts"] != nil {
+                                    print("💭 Found 'thoughts' field in detailed results")
+                                } else {
+                                    print("❌ No 'thoughts' field found in detailed results")
+                                }
+                                
+                                if detailsData["executionContext"] != nil {
+                                    print("⚙️ Found 'executionContext' field in detailed results")
+                                } else {
+                                    print("❌ No 'executionContext' field found in detailed results")
+                                }
+                            } else {
+                                print("❌ No detailed results in metadata")
+                            }
+                            
+                            if let thinkingSteps = thinkingSteps {
+                                print("✅ Captured \(thinkingSteps.count) thinking steps")
+                                for (index, thinking) in thinkingSteps.enumerated() {
+                                    print("  Step \(thinking.step): \(thinking.type) - \(thinking.content.prefix(50))...")
+                                }
+                            } else {
+                                print("❌ No thinking steps extracted")
+                            }
+                            
+                            if let context = executionContext {
+                                print("⚙️ Execution context: duration=\(context.duration_ms ?? 0)ms, memory=\(context.memory_used ?? "N/A")")
+                            } else {
+                                print("❌ No execution context extracted")
+                            }
                         } else {
-                            print("Message: '\(message.content.prefix(50))...' - No metadata, role=\(message.role)")
+                            print("❌ Message: '\(message.content.prefix(50))...' - No metadata, role=\(message.role)")
                         }
                         
                         self.state.aiSteps.append(step)
@@ -466,6 +559,14 @@ public struct GlassmorphicChatbar: View {
                             if let error = toolResult.error {
                                 self.state.aiSteps[index].errorMessage = error
                             }
+                            
+                            // Capture rich JSON results from result_json field
+                            if let resultData = toolResult.output.data(using: .utf8),
+                               let jsonResult = try? JSONSerialization.jsonObject(with: resultData, options: []) as? [String: Any] {
+                                self.state.aiSteps[index].rawResultJSON = jsonResult
+                                print("  Captured rich JSON result data")
+                            }
+                            
                             print("Updated tool step at index \(index) with result")
                         } else {
                             print("Warning: Could not find tool step for \(toolResult.toolName)")
