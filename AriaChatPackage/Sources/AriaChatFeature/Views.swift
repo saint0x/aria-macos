@@ -27,7 +27,7 @@ struct TaskListView: View {
                     .foregroundColor(Color.textSecondary(for: .light))
                     .padding(.vertical, 20)
             } else {
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 8) {
                         ForEach(taskManager.tasks, id: \.id) { task in
                             TaskRow(
@@ -362,7 +362,7 @@ struct LoggingView: View {
                 Divider()
                 
                 // Log entries
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         if observabilityService.isLoadingLogs {
                             HStack {
@@ -920,7 +920,7 @@ struct StepDetailPane: View {
             
             // Content
             if let content = detailContent {
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         // Accordion sections - reordered: Input → Output → Summary
                         AccordionSection(

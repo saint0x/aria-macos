@@ -30,7 +30,7 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(spacing: 12) { // space-y-3
                 // Model Configuration Section
                 Button(action: {

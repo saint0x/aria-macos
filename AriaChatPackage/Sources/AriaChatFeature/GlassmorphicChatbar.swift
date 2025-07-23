@@ -97,7 +97,7 @@ public struct GlassmorphicChatbar: View {
                         state.isViewMenuOpen = false
                     }
                     .frame(width: 2000, height: 1200) // Match canvas size
-                    .zIndex(1)
+                    .zIndex(-1)
             }
         }
         .onAppear {
@@ -212,7 +212,7 @@ public struct GlassmorphicChatbar: View {
     
     private var expandedContent: some View {
         ScrollViewReader { scrollProxy in
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     if state.showAiChatFlow {
                         AgentStatusIndicator(
@@ -731,6 +731,8 @@ public struct GlassmorphicChatbar: View {
     }
     
     private func handleTaskSelectForDetail(_ task: AriaTask) {
+        state.expanded = true
+        state.showAiChatFlow = false
         state.selectedItemForDetail = EnhancedStep(
             id: task.id,
             type: .thought,

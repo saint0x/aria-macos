@@ -100,6 +100,7 @@ struct DropdownMenuView: View {
             .background(backgroundView)
             .overlay(borderView)
             .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: 10)
+            .expandIn(isVisible: mounted)
             .onAppear {
                 mounted = true
             }
