@@ -10,7 +10,7 @@ enum StepType {
 }
 
 // MARK: - Execution Context Models
-struct ThinkingStep: Codable, Identifiable {
+struct ThinkingStep: Codable, Identifiable, Sendable {
     let id: String
     let step: Int
     let type: String
@@ -28,7 +28,7 @@ struct ThinkingStep: Codable, Identifiable {
     }
 }
 
-struct ExecutionContext: Codable {
+struct ExecutionContext: Codable, Sendable {
     let duration_ms: Int?
     let memory_used: String?
     let tokens_consumed: Int?
@@ -52,7 +52,7 @@ enum StepStatus: String {
     case failed
 }
 
-struct EnhancedStep: Identifiable {
+struct EnhancedStep: Identifiable, Sendable {
     let id: String
     let type: StepType
     let text: String
@@ -65,11 +65,11 @@ struct EnhancedStep: Identifiable {
     var toolResult: String?
     var errorMessage: String?
     
-    // Rich SSE metadata for details pane
-    var detailedResults: [String: Any]?
+    // Rich SSE metadata for details pane (using Data for Sendable compliance)
+    var detailedResultsData: Data?
     var thinkingSteps: [ThinkingStep]?
     var executionContext: ExecutionContext?
-    var rawResultJSON: [String: Any]?
+    var rawResultJSONData: Data?
     
     /// Computed property to determine if this step should be visible in the main chat
     var isVisibleInMainChat: Bool {
@@ -154,6 +154,16 @@ class GlassmorphicChatbarState: ObservableObject {
     @Published var showToolUploadSuccess = false
     @Published var chatbarSize: CGSize = .zero
     
+    // Auto-scroll state management
+    @Published var shouldAutoScroll = true
+    @Published var isUserScrolling = false
+    var scrollDebounceTimer: Timer?
+    
+    // Memory management configuration
+    private let maxMessagesInMemory = AppConfiguration.Performance.maxMessagesInMemory
+    private let messageCleanupThreshold = AppConfiguration.Performance.messageCleanupThreshold
+    private var lastMemoryPressureCheck = Date()
+    
     // Service managers
     let sessionManager = SessionManager.shared
     let chatService = ChatService.shared
@@ -200,8 +210,8 @@ class GlassmorphicChatbarState: ObservableObject {
         Task {
             do {
                 // Load tools and agents from registry
-                async let toolsTask = registryService.loadTools()
-                async let agentsTask = registryService.loadAgents()
+                async let toolsTask: Void = registryService.loadTools()
+                async let agentsTask: Void = registryService.loadAgents()
                 
                 try await toolsTask
                 try await agentsTask
@@ -267,5 +277,61 @@ class GlassmorphicChatbarState: ObservableObject {
             refreshToolMenuItems()
         }
         // Handle other menu item selections here
+    }
+    
+    // MARK: - Production-Ready Memory Management
+    
+    /// Adds a new step and manages memory automatically
+    public func addStep(_ step: EnhancedStep) {
+        aiSteps.append(step)
+        
+        // Check for memory cleanup every 10 messages or every 30 seconds
+        if aiSteps.count % 10 == 0 || Date().timeIntervalSince(lastMemoryPressureCheck) > 30 {
+            checkAndCleanupMemory()
+        }
+    }
+    
+    /// Intelligently cleans up old messages while preserving important ones
+    private func checkAndCleanupMemory() {
+        lastMemoryPressureCheck = Date()
+        
+        guard aiSteps.count > messageCleanupThreshold else { return }
+        
+        let stepsToKeep = selectImportantSteps()
+        
+        // Keep the most recent messages and important historical ones
+        let recentSteps = Array(aiSteps.suffix(maxMessagesInMemory / 2))
+        let combinedSteps = Array((stepsToKeep + recentSteps).suffix(maxMessagesInMemory))
+        
+        // Only update if we're actually reducing memory usage
+        if combinedSteps.count < aiSteps.count {
+            aiSteps = combinedSteps
+            print("🧹 Memory cleanup: Reduced from \(aiSteps.count) to \(combinedSteps.count) messages")
+        }
+    }
+    
+    /// Selects important steps that should be preserved during cleanup
+    private func selectImportantSteps() -> [EnhancedStep] {
+        let importantSteps = aiSteps.filter { step in
+            // Keep user messages (conversation context)
+            step.type == .userMessage ||
+            // Keep final responses (key outcomes)
+            (step.type == .response && step.metadata?.isFinal == true) ||
+            // Keep error messages (debugging context)
+            step.status == .failed ||
+            // Keep highlighted/selected messages
+            step.id == activeHighlightId
+        }
+        
+        // Limit important steps to prevent unbounded growth
+        return Array(importantSteps.suffix(maxMessagesInMemory / 2))
+    }
+    
+    /// Force cleanup for testing or low memory situations
+    public func forceMemoryCleanup() {
+        if aiSteps.count > maxMessagesInMemory {
+            aiSteps = Array(aiSteps.suffix(maxMessagesInMemory))
+            print("🚨 Force memory cleanup: Reduced to \(aiSteps.count) messages")
+        }
     }
 }

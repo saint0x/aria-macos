@@ -11,7 +11,7 @@ public class ChatService: ObservableObject {
     @Published public private(set) var processingComplete = false
     @Published public private(set) var chatError: Error?
     
-    private let streamingClient = StreamingClient()
+    private let streamingClient: StreamingClient
     private let sessionManager = SessionManager.shared
     
     // Active stream handle
@@ -20,7 +20,9 @@ public class ChatService: ObservableObject {
     // Callback for handling turn output events
     public typealias TurnOutputHandler = @Sendable (TurnOutputEvent) -> Void
     
-    private init() {}
+    private init() {
+        self.streamingClient = StreamingClient()
+    }
     
     /// Execute a turn in the conversation
     public func executeTurn(input: String, onTurnOutput: @escaping TurnOutputHandler) async throws {
@@ -108,6 +110,8 @@ public class ChatService: ObservableObject {
     }
     
     private func handleStreamEvent(_ event: SSEEvent, onTurnOutput: @escaping TurnOutputHandler) async {
+        print("🔍 SSE EVENT DEBUG: type='\(event.type)' dataLength=\(event.data.count)")
+        print("🔍 SSE DATA: \(event.data)")
         print("ChatService: Received SSE event type: \(event.type)")
         print("ChatService: Event data: \(event.data)")
         

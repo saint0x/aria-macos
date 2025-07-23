@@ -6,6 +6,7 @@ struct AgentStatusIndicator: View {
     let activeHighlightId: String?
     
     @Environment(\.colorScheme) var colorScheme
+    @StateObject private var animationManager = AnimationManager.shared
     
     var body: some View {
         // Filter steps to show only those visible in main chat
@@ -18,11 +19,10 @@ struct AgentStatusIndicator: View {
                 ForEach(Array(visibleSteps.enumerated()), id: \.element.id) { index, step in
                     VStack(spacing: 0) {
                         stepView(for: step)
-                            .slideUpFade(isVisible: true)
-                            .animation(
-                                AnimationSystem.slideUpFade
-                                    .delay(Double(index) * 0.05), // Stagger for new items
-                                value: visibleSteps.count
+                            .animateMessageEntry(
+                                messageId: step.id,
+                                index: index,
+                                totalMessages: visibleSteps.count
                             )
                         
                         // Add spacing based on message grouping

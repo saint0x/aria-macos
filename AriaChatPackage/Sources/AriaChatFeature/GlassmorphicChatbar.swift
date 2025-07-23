@@ -18,8 +18,8 @@ public struct GlassmorphicChatbar: View {
     @Environment(\.colorScheme) var colorScheme
     @FocusState private var isInputFocused: Bool
     
-    private let maxWidth: CGFloat = 512 // max-w-lg equivalent (32rem = 512px)
-    private let expandedHeight: CGFloat = 450
+    private let maxWidth: CGFloat = AppConfiguration.UI.maxChatWidth
+    private let expandedHeight: CGFloat = AppConfiguration.UI.expandedChatHeight
     
     public var body: some View {
         ZStack {
@@ -145,7 +145,7 @@ public struct GlassmorphicChatbar: View {
             }
         }
         .frame(height: state.expanded ? expandedHeight : nil)
-        .glassmorphic(cornerRadius: 22)
+        .glassmorphic(cornerRadius: AppConfiguration.UI.chatCornerRadius)
         .appleShadow()
         .overlay(
             // Top gradient highlight - 1pt line as per SWIFT2.md
@@ -211,25 +211,52 @@ public struct GlassmorphicChatbar: View {
     }
     
     private var expandedContent: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if state.showAiChatFlow {
-                    AgentStatusIndicator(
-                        steps: state.aiSteps,
-                        onStepClick: handleAiStepSelectForDetail,
-                        activeHighlightId: state.activeHighlightId
-                    )
-                    .padding(.bottom, 12)
-                } else {
-                    // Show active view
-                    activeViewContent
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if state.showAiChatFlow {
+                        AgentStatusIndicator(
+                            steps: state.aiSteps,
+                            onStepClick: handleAiStepSelectForDetail,
+                            activeHighlightId: state.activeHighlightId
+                        )
+                        .padding(.bottom, 12)
+                    } else {
+                        // Show active view
+                        activeViewContent
+                    }
+                    
+                    // Invisible anchor for scroll-to-bottom functionality
+                    if state.showAiChatFlow && !state.aiSteps.isEmpty {
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom-anchor")
+                    }
                 }
+                .padding(.horizontal, AppConfiguration.UI.chatPadding)
+                .padding(.top, 4)
+                .padding(.bottom, AppConfiguration.UI.messagePadding)
             }
-            .padding(.horizontal, 14) // Consistent with input section
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            .frame(maxHeight: .infinity)
+            .onChange(of: state.aiSteps.count) {
+                handleNewMessage(scrollProxy: scrollProxy)
+            }
+            .onChange(of: state.activeHighlightId) {
+                handleHighlightChange(scrollProxy: scrollProxy)
+            }
+            .simultaneousGesture(
+                DragGesture()
+                    .onChanged { _ in
+                        state.isUserScrolling = true
+                    }
+                    .onEnded { _ in
+                        // Allow auto-scroll again after user stops scrolling
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.state.isUserScrolling = false
+                        }
+                    }
+            )
         }
-        .frame(maxHeight: .infinity)
     }
     
     @ViewBuilder
@@ -351,7 +378,7 @@ public struct GlassmorphicChatbar: View {
             text: userMessageContent
         )
         
-        state.aiSteps.append(newUserMessageStep)
+        state.addStep(newUserMessageStep)
         state.activeHighlightId = newUserMessageStep.id
         state.inputValue = ""
         
@@ -375,7 +402,7 @@ public struct GlassmorphicChatbar: View {
             status: .active,
             metadata: MessageMetadata(isStatus: false, isFinal: false, messageType: "acknowledgment")
         )
-        state.aiSteps.append(acknowledgmentStep)
+        state.addStep(acknowledgmentStep)
         state.activeHighlightId = acknowledgmentStep.id
         
         var eventCount = 0
@@ -414,6 +441,12 @@ public struct GlassmorphicChatbar: View {
                         // Skip user messages from events - we already added them when submitting
                         if message.role == .user {
                             print("Skipping duplicate user message from event stream")
+                            break
+                        }
+                        
+                        // Skip assistant response messages - they will be handled by finalResponse event
+                        if message.role == .assistant {
+                            print("✅ SKIPPING assistant response message (ID: \(message.id)) - will be handled by finalResponse event")
                             break
                         }
                         
@@ -477,8 +510,14 @@ public struct GlassmorphicChatbar: View {
                             metadata: message.metadata
                         )
                         
-                        // Assign rich metadata
-                        step.detailedResults = detailedResults
+                        // Assign rich metadata (convert to Data for Sendable compliance)
+                        if let detailedResults = detailedResults {
+                            do {
+                                step.detailedResultsData = try JSONSerialization.data(withJSONObject: detailedResults)
+                            } catch {
+                                print("Failed to serialize detailedResults: \(error)")
+                            }
+                        }
                         step.thinkingSteps = thinkingSteps
                         step.executionContext = executionContext
                         
@@ -524,7 +563,7 @@ public struct GlassmorphicChatbar: View {
                             print("❌ Message: '\(message.content.prefix(50))...' - No metadata, role=\(message.role)")
                         }
                         
-                        self.state.aiSteps.append(step)
+                        self.state.addStep(step)
                         self.state.activeHighlightId = step.id
                         
                         if message.role == .thought {
@@ -544,7 +583,7 @@ public struct GlassmorphicChatbar: View {
                             isIndented: true,
                             toolParameters: toolCall.parameters
                         )
-                        self.state.aiSteps.append(step)
+                        self.state.addStep(step)
                         await turnState.setToolId(toolCall.toolName, stepId: step.id)
                         
                     case .toolResult(let toolResult):
@@ -562,8 +601,8 @@ public struct GlassmorphicChatbar: View {
                             
                             // Capture rich JSON results from result_json field
                             if let resultData = toolResult.output.data(using: .utf8),
-                               let jsonResult = try? JSONSerialization.jsonObject(with: resultData, options: []) as? [String: Any] {
-                                self.state.aiSteps[index].rawResultJSON = jsonResult
+                               let _ = try? JSONSerialization.jsonObject(with: resultData, options: []) as? [String: Any] {
+                                self.state.aiSteps[index].rawResultJSONData = resultData
                                 print("  Captured rich JSON result data")
                             }
                             
@@ -573,6 +612,13 @@ public struct GlassmorphicChatbar: View {
                         }
                         
                     case .finalResponse(let response):
+                        // Skip duplicate finalResponse events with same content
+                        if receivedFinalResponse {
+                            print("✅ SKIPPING duplicate finalResponse event")
+                            break
+                        }
+                        
+                        print("✅ PROCESSING finalResponse event - this will be the visible message")
                         receivedFinalResponse = true
                         // Complete any active thought
                         if let thoughtId = await turnState.getActiveThoughtId(),
@@ -587,7 +633,7 @@ public struct GlassmorphicChatbar: View {
                             status: .completed,
                             metadata: MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
                         )
-                        self.state.aiSteps.append(responseStep)
+                        self.state.addStep(responseStep)
                         self.state.activeHighlightId = responseStep.id
                     }
                 }
@@ -601,7 +647,7 @@ public struct GlassmorphicChatbar: View {
                 text: "Error: \(error.localizedDescription)",
                 status: .failed
             )
-            state.aiSteps.append(errorStep)
+            state.addStep(errorStep)
         }
         
         print("GlassmorphicChatbar: Execution complete. Events received: \(eventCount), Final response: \(receivedFinalResponse)")
@@ -609,8 +655,7 @@ public struct GlassmorphicChatbar: View {
         state.isProcessing = false
         state.processingComplete = true
         
-        // Ensure at least one response is visible
-        ensureResponseVisible()
+        // With simplified visibility rules, responses should now be visible automatically
         
         // If we never removed the acknowledgment and no final response, update it to show completion
         if !hasRemovedAcknowledgment && !receivedFinalResponse {
@@ -665,7 +710,7 @@ public struct GlassmorphicChatbar: View {
                     text: "Failed to create new session: \(error.localizedDescription)",
                     status: .failed
                 )
-                state.aiSteps.append(errorStep)
+                state.addStep(errorStep)
             }
         }
     }
@@ -700,44 +745,46 @@ public struct GlassmorphicChatbar: View {
         }
     }
     
-    private func ensureResponseVisible() {
-        // Check if any response is visible in the main chat
-        let visibleResponses = state.aiSteps.filter { step in
-            step.isVisibleInMainChat && (step.type == .response || 
-                (step.metadata?.isFinal == true && step.type != .userMessage))
-        }
+    
+    // MARK: - Production-Ready Auto-Scroll System
+    
+    private func handleNewMessage(scrollProxy: ScrollViewProxy) {
+        // Only auto-scroll if user is not manually scrolling and we should auto-scroll
+        guard state.shouldAutoScroll && !state.isUserScrolling && state.showAiChatFlow else { return }
         
-        // If no response is visible, create one from the last non-user message
-        if visibleResponses.isEmpty {
-            // Find the last assistant/thought message that has actual content
-            if let lastMessage = state.aiSteps.reversed().first(where: { step in
-                step.type != .userMessage && 
-                step.type != .tool &&
-                !step.text.isEmpty &&
-                !step.text.hasPrefix("Executing") &&
-                !step.text.hasPrefix("Understood")
-            }) {
-                // Create a visible response from the last message
-                let responseStep = EnhancedStep(
-                    id: "fallback-\(UUID().uuidString)",
-                    type: .response,
-                    text: lastMessage.text,
-                    status: .completed,
-                    metadata: MessageMetadata(isStatus: false, isFinal: true, messageType: "response")
-                )
-                state.aiSteps.append(responseStep)
-                state.activeHighlightId = responseStep.id
-            } else {
-                // If no suitable message found, show a generic error
-                let errorStep = EnhancedStep(
-                    id: "no-response-\(UUID().uuidString)",
-                    type: .response,
-                    text: "I apologize, but I encountered an issue processing your request. Please try again.",
-                    status: .failed
-                )
-                state.aiSteps.append(errorStep)
-                state.activeHighlightId = errorStep.id
+        // Debounce rapid message additions
+        state.scrollDebounceTimer?.invalidate()
+        state.scrollDebounceTimer = Timer.scheduledTimer(withTimeInterval: AppConfiguration.UI.scrollDebounceInterval, repeats: false) { _ in
+            DispatchQueue.main.async {
+                self.performAutoScroll(scrollProxy: scrollProxy)
             }
+        }
+    }
+    
+    private func handleHighlightChange(scrollProxy: ScrollViewProxy) {
+        // When highlighting a specific message, always scroll to it
+        if let highlightId = state.activeHighlightId {
+            withAnimation(.easeOut(duration: 0.4)) {
+                scrollProxy.scrollTo(highlightId, anchor: .center)
+            }
+        }
+    }
+    
+    private func resetAutoScrollAfterDelay() {
+        // Reset auto-scroll flag after user interaction ends
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if !self.state.isUserScrolling {
+                self.state.shouldAutoScroll = true
+            }
+        }
+    }
+    
+    private func performAutoScroll(scrollProxy: ScrollViewProxy) {
+        guard !state.aiSteps.isEmpty else { return }
+        
+        let animation = AnimationManager.shared.coordinatedScrollAnimation()
+        withAnimation(animation) {
+            scrollProxy.scrollTo("bottom-anchor", anchor: .bottom)
         }
     }
 }

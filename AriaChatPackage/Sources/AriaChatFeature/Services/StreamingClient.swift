@@ -164,22 +164,58 @@ public actor StreamingClient {
 
 // MARK: - Supporting Types
 
-public struct SSEEvent: @unchecked Sendable {
+public enum SSEError: LocalizedError, Sendable {
+    case invalidJSON(String)
+    case streamClosed
+    case authenticationFailed
+    
+    public var errorDescription: String? {
+        switch self {
+        case .invalidJSON(let message):
+            return "Invalid JSON in SSE stream: \(message)"
+        case .streamClosed:
+            return "SSE stream was closed unexpectedly"
+        case .authenticationFailed:
+            return "Authentication failed for SSE stream"
+        }
+    }
+}
+
+public struct SSEEvent: Sendable {
     public let type: String
     public let data: String
-    public let json: Any?
+    public let jsonData: Data?
     
     init(type: String, data: String) {
         self.type = type
         self.data = data
         
-        // Try to parse as JSON
-        if let jsonData = data.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: jsonData) {
-            self.json = json
+        // Store raw JSON data instead of parsed Any for thread safety
+        if let jsonData = data.data(using: .utf8), 
+           let _ = try? JSONSerialization.jsonObject(with: jsonData, options: []) {
+            self.jsonData = jsonData
         } else {
-            self.json = nil
+            self.jsonData = nil
         }
+    }
+    
+    // Type-safe JSON decoding
+    public func decode<T: Codable>(_ type: T.Type) throws -> T {
+        guard let jsonData = jsonData else {
+            throw SSEError.invalidJSON("No JSON data available")
+        }
+        return try JSONDecoder().decode(type, from: jsonData)
+    }
+    
+    // Convenience for legacy code that needs dictionary access
+    public func decodeObject() throws -> [String: Any] {
+        guard let jsonData = jsonData else {
+            throw SSEError.invalidJSON("No JSON data available")
+        }
+        guard let object = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] else {
+            throw SSEError.invalidJSON("JSON is not an object")
+        }
+        return object
     }
 }
 
@@ -201,6 +237,7 @@ private final class SSEDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
     let onComplete: @Sendable () -> Void
     
     private var buffer = Data()
+    private let bufferLock = NSLock()
     
     init(
         streamId: UUID,
@@ -215,34 +252,50 @@ private final class SSEDelegate: NSObject, URLSessionDataDelegate, @unchecked Se
     }
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        buffer.append(data)
-        
-        // Process complete events from buffer
-        while let range = buffer.range(of: "\n\n".data(using: .utf8)!) {
-            let eventData = buffer.subdata(in: 0..<range.lowerBound)
-            buffer.removeSubrange(0..<range.upperBound)
-            
-            if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
-                parseAndEmitEvent(eventString)
-            }
+        print("🔍 SSE DATA RECEIVED: \(data.count) bytes")
+        if let dataString = String(data: data, encoding: .utf8) {
+            print("🔍 SSE RAW DATA: \(dataString)")
         }
-        
-        // Also check for single newline terminated events (some SSE implementations)
-        if let newlineRange = buffer.range(of: "\n".data(using: .utf8)!),
-           newlineRange.lowerBound == buffer.count - 1 {
-            let eventData = buffer.subdata(in: 0..<newlineRange.lowerBound)
-            if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
-                parseAndEmitEvent(eventString)
-                buffer.removeAll()
+        bufferLock.withLock {
+            buffer.append(data)
+            
+            // Process complete events from buffer
+            while let range = buffer.range(of: "\n\n".data(using: .utf8)!) {
+                let eventData = buffer.subdata(in: 0..<range.lowerBound)
+                buffer.removeSubrange(0..<range.upperBound)
+                
+                if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
+                    parseAndEmitEvent(eventString)
+                }
+            }
+            
+            // Also check for single newline terminated events (some SSE implementations)
+            if let newlineRange = buffer.range(of: "\n".data(using: .utf8)!),
+               newlineRange.lowerBound == buffer.count - 1 {
+                let eventData = buffer.subdata(in: 0..<newlineRange.lowerBound)
+                if let eventString = String(data: eventData, encoding: .utf8), !eventString.isEmpty {
+                    parseAndEmitEvent(eventString)
+                    buffer.removeAll()
+                }
             }
         }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        // Process any remaining data in buffer
-        if !buffer.isEmpty, let eventString = String(data: buffer, encoding: .utf8) {
-            parseAndEmitEvent(eventString)
-            buffer.removeAll()
+        print("🔍 SSE CONNECTION COMPLETED")
+        // Process any remaining data in buffer with thread-safe access
+        bufferLock.withLock {
+            if !buffer.isEmpty, let eventString = String(data: buffer, encoding: .utf8) {
+                print("🔍 SSE FINAL BUFFER: \(eventString)")
+                parseAndEmitEvent(eventString)
+                buffer.removeAll()
+            }
+        }
+        
+        if let error = error {
+            print("🔍 SSE CONNECTION ERROR: \(error)")
+        } else {
+            print("🔍 SSE CONNECTION CLOSED NORMALLY")
         }
         
         if let error = error {

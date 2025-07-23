@@ -10,9 +10,7 @@ enum MessageVisibilityRules {
     
     /// Single source of truth for main chat visibility
     static func isVisibleInMainChat(_ step: EnhancedStep) -> Bool {
-        // Log decision for debugging
         let decision = makeVisibilityDecision(step)
-        print("MessageVisibility: \(step.type) '\(step.text.prefix(30))...' → \(decision.isVisible ? "SHOW" : "HIDE") (reason: \(decision.reason))")
         return decision.isVisible
     }
     
@@ -40,6 +38,11 @@ enum MessageVisibilityRules {
             }
             
             // Hide all other responses (from message events with "msg-" prefix)
+            // This includes assistant messages that should have been skipped in processing
+            if step.id.hasPrefix("msg-") {
+                return VisibilityDecision(isVisible: false, reason: "Assistant message event (should be skipped)")
+            }
+            
             return VisibilityDecision(isVisible: false, reason: "Message event response (not final)")
         }
         
