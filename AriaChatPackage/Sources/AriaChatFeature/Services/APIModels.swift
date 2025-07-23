@@ -737,3 +737,28 @@ public struct AnyCodable: Codable, @unchecked Sendable {
         }
     }
 }
+
+// MARK: - Conversation History Models
+
+public struct ConversationHistoryResponse: Codable, Sendable {
+    public let data: ConversationHistoryData
+}
+
+public struct ConversationHistoryData: Codable, Sendable {
+    public let sessionId: String
+    public let turns: [ConversationTurn]
+}
+
+public struct ConversationTurn: Codable, Sendable {
+    public let id: String
+    public let userMessage: String
+    public let assistantResponse: String
+    public let toolCalls: [HistoricalToolCall]
+    public let createdAt: String
+}
+
+public struct HistoricalToolCall: Codable, Sendable {
+    public let toolName: String
+    public let parameters: [String: AnyCodable]
+    public let result: [String: AnyCodable]?
+}

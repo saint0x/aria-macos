@@ -301,6 +301,109 @@ public class ChatService: ObservableObject {
             print("ChatService: No auth header available, proceeding without authentication")
         }
     }
+    
+    /// Loads and displays chat history for a specific session
+    internal func loadChatHistory(for sessionId: String, state: GlassmorphicChatbarState) async throws {
+        print("ChatService: Loading chat history for session: \(sessionId)")
+        
+        do {
+            let historyResponse = try await SessionManager.shared.loadSessionHistory(sessionId)
+            
+            // Convert historical turns to EnhancedStep objects
+            let steps = convertHistoryToSteps(historyResponse.data.turns)
+            
+            // Update UI state on main actor
+            await MainActor.run {
+                print("ChatService: Loaded \(steps.count) historical steps")
+                state.aiSteps = steps
+                state.showAiChatFlow = true
+                state.selectedItemForDetail = nil // Clear any detail pane
+                SessionManager.shared.setCurrentSession(sessionId)
+            }
+            
+        } catch {
+            print("ChatService: Error loading chat history: \(error)")
+            throw error
+        }
+    }
+    
+    /// Converts conversation history turns to EnhancedStep objects for UI display
+    private func convertHistoryToSteps(_ turns: [ConversationTurn]) -> [EnhancedStep] {
+        var steps: [EnhancedStep] = []
+        
+        for turn in turns {
+            // Parse timestamp
+            let timestamp = ISO8601DateFormatter().date(from: turn.createdAt) ?? Date()
+            
+            // Add user message step
+            var userStep = EnhancedStep(
+                id: "\(turn.id)-user",
+                type: .userMessage,
+                text: turn.userMessage,
+                status: .completed,
+                metadata: MessageMetadata(
+                    isStatus: false,
+                    isFinal: true,
+                    messageType: "user_message"
+                )
+            )
+            steps.append(userStep)
+            
+            // Add tool call steps if any
+            for (index, toolCall) in turn.toolCalls.enumerated() {
+                // Convert parameters to string format
+                var paramStrings: [String: String] = [:]
+                for (key, value) in toolCall.parameters {
+                    paramStrings[key] = String(describing: value.wrappedValue)
+                }
+                
+                // Convert result to string
+                let resultString: String?
+                if let result = toolCall.result {
+                    if let jsonData = try? JSONSerialization.data(withJSONObject: result.mapValues { $0.wrappedValue }, options: .prettyPrinted),
+                       let jsonString = String(data: jsonData, encoding: .utf8) {
+                        resultString = jsonString
+                    } else {
+                        resultString = String(describing: result)
+                    }
+                } else {
+                    resultString = nil
+                }
+                
+                var toolStep = EnhancedStep(
+                    id: "\(turn.id)-tool-\(index)",
+                    type: .tool,
+                    text: toolCall.toolName,
+                    status: .completed,
+                    toolName: toolCall.toolName,
+                    metadata: MessageMetadata(
+                        isStatus: false,
+                        isFinal: true,
+                        messageType: "tool_call"
+                    ),
+                    toolParameters: paramStrings,
+                    toolResult: resultString
+                )
+                steps.append(toolStep)
+            }
+            
+            // Add assistant response step
+            var assistantStep = EnhancedStep(
+                id: "\(turn.id)-assistant",
+                type: .response,
+                text: turn.assistantResponse,
+                status: .completed,
+                metadata: MessageMetadata(
+                    isStatus: false,
+                    isFinal: true,
+                    messageType: "assistant_response"
+                )
+            )
+            steps.append(assistantStep)
+        }
+        
+        return steps
+    }
 }
 
 // MARK: - Turn Output Events

@@ -89,4 +89,20 @@ public class SessionManager: ObservableObject {
         currentSession = nil
         sessionError = nil
     }
+    
+    /// Loads conversation history for a specific session
+    public func loadSessionHistory(_ sessionId: String) async throws -> ConversationHistoryResponse {
+        let response = try await apiClient.get(
+            APIEndpoints.getSessionHistory(sessionId),
+            type: ConversationHistoryResponse.self
+        )
+        return response
+    }
+    
+    /// Sets the current session without creating a new one
+    public func setCurrentSession(_ sessionId: String) {
+        currentSessionId = sessionId
+        // Note: We don't set currentSession here as that would require an API call
+        // The session details can be fetched separately if needed
+    }
 }

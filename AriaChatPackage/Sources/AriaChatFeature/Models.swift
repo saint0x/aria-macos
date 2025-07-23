@@ -145,6 +145,7 @@ class GlassmorphicChatbarState: ObservableObject {
     @Published var aiSteps: [EnhancedStep] = []
     @Published var isProcessing = false
     @Published var processingComplete = false
+    @Published var isLoadingHistory = false
     @Published var selectedItemForDetail: EnhancedStep?
     @Published var showAiChatFlow = false
     @Published var activeHighlightId: String?

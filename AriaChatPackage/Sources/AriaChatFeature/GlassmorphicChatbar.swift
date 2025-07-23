@@ -732,13 +732,24 @@ public struct GlassmorphicChatbar: View {
     
     private func handleTaskSelectForDetail(_ task: AriaTask) {
         state.expanded = true
-        state.showAiChatFlow = false
-        state.selectedItemForDetail = EnhancedStep(
-            id: task.id,
-            type: .thought,
-            text: task.detailIdentifier,
-            status: .active
-        )
+        state.isLoadingHistory = true
+        state.selectedItemForDetail = nil // Clear any existing detail pane
+        
+        Task {
+            do {
+                try await ChatService.shared.loadChatHistory(for: task.id, state: state)
+                await MainActor.run {
+                    state.isLoadingHistory = false
+                    print("GlassmorphicChatbar: Successfully loaded chat history for task: \(task.id)")
+                }
+            } catch {
+                await MainActor.run {
+                    state.isLoadingHistory = false
+                    print("GlassmorphicChatbar: Error loading chat history for task \(task.id): \(error)")
+                    // Optionally show error state or fallback to detail view
+                }
+            }
+        }
     }
     
     private func handleAiStepSelectForDetail(_ step: EnhancedStep) {

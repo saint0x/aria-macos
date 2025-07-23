@@ -18,6 +18,11 @@ public enum APIEndpoints {
         "/sessions/\(sessionId)/turns"
     }
     
+    /// GET /api/v1/sessions/{session_id}/history - Get conversation history
+    public static func getSessionHistory(_ sessionId: String) -> String {
+        "/sessions/\(sessionId)/history"
+    }
+    
     // MARK: - Tasks
     
     /// POST /api/v1/tasks - Launch a new task
