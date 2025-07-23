@@ -138,6 +138,13 @@ struct TaskListView: View {
         case "generation", "generate":
             return "Generation Task"
             
+        case "chat_session":
+            if let args = payload?.args,
+               let description = args["session_description"]?.wrappedValue as? String {
+                return description
+            }
+            return "Chat Session"
+            
         default:
             // Extract first meaningful argument value
             if let args = payload?.args,

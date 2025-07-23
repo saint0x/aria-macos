@@ -143,6 +143,35 @@ public struct ListTasksResponse: Codable, Sendable {
     public let nextPageToken: String?
 }
 
+// MARK: - Sessions List Models (for Task View)
+
+public struct SessionsListResponse: Codable, Sendable {
+    public let data: [SessionListItem]
+}
+
+public struct SessionListItem: Codable, Sendable {
+    public let id: String
+    public let title: String?
+    public let createdAt: String
+    public let lastAccessedAt: String
+    public let messageCount: Int
+    public let status: String
+    
+    // Computed property to get Date from ISO string
+    public var createdAtDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: createdAt)
+    }
+    
+    // Computed property for last accessed date
+    public var lastAccessedAtDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: lastAccessedAt)
+    }
+}
+
 // MARK: - Bundle Models
 
 public struct UploadBundleRequest: Codable, Sendable {

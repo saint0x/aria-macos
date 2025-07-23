@@ -23,8 +23,8 @@ public enum APIEndpoints {
     /// POST /api/v1/tasks - Launch a new task
     public static let createTask = "/tasks"
     
-    /// GET /api/v1/tasks - List tasks (with query params)
-    public static let listTasks = "/tasks"
+    /// GET /api/v1/sessions - List sessions (with query params) - displayed as Task View
+    public static let listTasks = "/sessions"
     
     /// GET /api/v1/tasks/{task_id} - Get task details
     public static func getTask(_ taskId: String) -> String {
@@ -112,29 +112,17 @@ public enum APIEndpoints {
     
     public struct QueryParams {
         public static func listTasks(
-            sessionId: String? = nil,
-            filterByStatus: [String]? = nil,
-            pageSize: Int? = nil,
-            pageToken: String? = nil
+            limit: Int? = nil,
+            offset: Int? = nil
         ) -> [URLQueryItem] {
             var items: [URLQueryItem] = []
             
-            if let sessionId = sessionId {
-                items.append(URLQueryItem(name: "session_id", value: sessionId))
+            if let limit = limit {
+                items.append(URLQueryItem(name: "limit", value: String(limit)))
             }
             
-            if let statuses = filterByStatus {
-                for status in statuses {
-                    items.append(URLQueryItem(name: "filter_by_status[]", value: status))
-                }
-            }
-            
-            if let pageSize = pageSize {
-                items.append(URLQueryItem(name: "page_size", value: String(pageSize)))
-            }
-            
-            if let pageToken = pageToken {
-                items.append(URLQueryItem(name: "page_token", value: pageToken))
+            if let offset = offset {
+                items.append(URLQueryItem(name: "offset", value: String(offset)))
             }
             
             return items
