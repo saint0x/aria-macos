@@ -3,36 +3,366 @@ import SwiftUI
 // MARK: - Task List View
 struct TaskListView: View {
     let onTaskSelect: (AriaTask) -> Void
+    
     @StateObject private var taskManager = TaskManager.shared
+    @StateObject private var chatSessionManager = ChatSessionManager.shared
+    
+    @State private var selectedContentType: ContentType = .chats
+    @State private var isContentTypeMenuOpen = false
     @State private var isInitialLoad = true
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Active Tasks")
                     .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color.textPrimary(for: colorScheme))
                 
                 Spacer()
                 
-                if taskManager.isLoadingTasks && !isInitialLoad {
+                // Loading indicator
+                if (selectedContentType == .chats ? chatSessionManager.isLoadingSessions : taskManager.isLoadingTasks) && !isInitialLoad {
                     ProgressView()
                         .scaleEffect(0.8)
                 }
+                
+                // Content Type Dropdown
+                Button(action: { isContentTypeMenuOpen.toggle() }) {
+                    HStack(spacing: 6) {
+                        Text(selectedContentType.displayName)
+                            .font(.textXS)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(Color.buttonText(for: colorScheme))
+                }
+                .buttonStyle(FooterButtonStyle())
             }
             .padding(.bottom, 4)
             
-            if taskManager.tasks.isEmpty && !taskManager.isLoadingTasks {
-                Text("No tasks available")
-                    .font(.textSM)
-                    .foregroundColor(Color.textSecondary(for: .light))
+            // Content based on selected type
+            ContentListView(
+                contentType: selectedContentType,
+                chatSessionManager: chatSessionManager,
+                taskManager: taskManager,
+                onTaskSelect: onTaskSelect
+            )
+        }
+        .overlay(alignment: .topTrailing) {
+            // Content Type Dropdown Menu
+            if isContentTypeMenuOpen {
+                VStack(spacing: 0) {
+                    ForEach(ContentType.allCases, id: \.self) { contentType in
+                        Button(action: {
+                            selectedContentType = contentType
+                            isContentTypeMenuOpen = false
+                        }) {
+                            HStack {
+                                Text(contentType.displayName)
+                                    .font(.textXS)
+                                    .foregroundColor(
+                                        !contentType.isImplemented ?
+                                        Color.textTertiary(for: colorScheme) :
+                                        (selectedContentType == contentType ?
+                                        Color.buttonText(for: colorScheme) :
+                                        Color.textSecondary(for: colorScheme))
+                                    )
+                                
+                                Spacer()
+                                
+                                if selectedContentType == contentType {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color.buttonText(for: colorScheme))
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!contentType.isImplemented)
+                        .hoverHighlight()
+                    }
+                }
+                .padding(6)
+                .frame(width: 120)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.glassmorphicBackground(for: colorScheme))
+                        .background(
+                            VisualEffectView(material: .menu, blendingMode: .withinWindow)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .appleShadow()
+                .offset(y: 35)
+                .zIndex(1000)
+            }
+        }
+        .onAppear {
+            if isInitialLoad {
+                Task {
+                    isInitialLoad = false
+                    await loadCurrentContentType()
+                }
+            }
+        }
+        .onChange(of: selectedContentType) { _ in
+            Task {
+                await loadCurrentContentType()
+            }
+        }
+    }
+    
+    private func loadCurrentContentType() async {
+        switch selectedContentType {
+        case .chats:
+            print("TaskListView: Loading chat sessions...")
+            do {
+                try await chatSessionManager.loadSessions(refresh: true)
+                print("TaskListView: Loaded sessions successfully")
+            } catch {
+                print("TaskListView: Error loading sessions: \(error)")
+            }
+        case .tasks:
+            print("TaskListView: Loading tasks...")
+            do {
+                try await taskManager.listTasks(refresh: true)
+                print("TaskListView: Listed tasks successfully")
+            } catch {
+                print("TaskListView: Error loading tasks: \(error)")
+            }
+        case .containers:
+            print("TaskListView: Containers not yet implemented")
+        }
+    }
+}
+
+// MARK: - Enhanced Session Row
+struct EnhancedSessionRow: View {
+    let session: SessionListItem
+    let sessionManager: ChatSessionManager
+    let onSelect: () -> Void
+    
+    @State private var sessionTitle: String = ""
+    @State private var isHovered = false
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .center, spacing: 16) {
+                // Left: Session Title
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sessionTitle.isEmpty ? "Loading..." : sessionTitle)
+                        .font(.system(size: 14, weight: .medium, design: .default))
+                        .foregroundColor(Color.textPrimary(for: colorScheme))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(sessionTitle)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Removed: Message count metadata per user request
+                
+                // Right: Status + Chevron
+                HStack(spacing: 12) {
+                    let statusInfo = sessionManager.mapSessionStatus(session)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(statusInfo.color)
+                            .frame(width: 6, height: 6)
+                        
+                        Text(statusInfo.text)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(statusInfo.color)
+                    }
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.textSecondary(for: colorScheme))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16) // rounded-xl for more square-rounded look
+                    .fill(
+                        .regularMaterial.opacity(0.7)
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.glassmorphicBackground(for: colorScheme))
+                    )
+                    // Removed: Border stroke per user request for cleaner look
+            )
+            .shadow(
+                color: Color.black.opacity(0.05),
+                radius: 20,
+                x: 0,
+                y: 8
+            )
+            .shadow(
+                color: Color.black.opacity(0.04),
+                radius: 10,
+                x: 0,
+                y: -6
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.3), value: isHovered)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.3)) {
+                isHovered = hovering
+            }
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .onAppear {
+            Task {
+                sessionTitle = await sessionManager.getSessionTitle(for: session)
+            }
+        }
+    }
+}
+
+
+// MARK: - Content List View
+struct ContentListView: View {
+    let contentType: ContentType
+    let chatSessionManager: ChatSessionManager
+    let taskManager: TaskManager
+    let onTaskSelect: (AriaTask) -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Group {
+            switch contentType {
+            case .chats:
+                ChatSessionListView(
+                    sessionManager: chatSessionManager,
+                    onTaskSelect: onTaskSelect
+                )
+            case .tasks:
+                TaskListContentView(
+                    taskManager: taskManager,
+                    onTaskSelect: onTaskSelect
+                )
+            case .containers:
+                ContainerListView()
+            }
+        }
+    }
+}
+
+// MARK: - Chat Session List View
+struct ChatSessionListView: View {
+    let sessionManager: ChatSessionManager
+    let onTaskSelect: (AriaTask) -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Group {
+            if sessionManager.sessions.isEmpty && !sessionManager.isLoadingSessions {
+                Text("No chat sessions available")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.textSecondary(for: colorScheme))
                     .padding(.vertical, 20)
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 8) {
-                        ForEach(taskManager.tasks, id: \.id) { task in
+                        ForEach(sessionManager.sessions, id: \.id) { session in
+                            EnhancedSessionRow(
+                                session: session,
+                                sessionManager: sessionManager,
+                                onSelect: {
+                                    // Convert session to AriaTask for compatibility
+                                    let task = AriaTask(
+                                        id: session.id,
+                                        title: session.title ?? "Chat Session",
+                                        detailIdentifier: session.id,
+                                        status: mapSessionStatusToTaskStatus(session.status),
+                                        timestamp: session.createdAtDate ?? Date()
+                                    )
+                                    onTaskSelect(task)
+                                }
+                            )
+                        }
+                        
+                        if sessionManager.hasMoreSessions && !sessionManager.isLoadingSessions {
+                            Button(action: {
+                                Task {
+                                    try? await sessionManager.loadMoreSessions()
+                                }
+                            }) {
+                                Text("Load More")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color.buttonText(for: colorScheme))
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+            
+            if let error = sessionManager.sessionError {
+                Text("Error: \(error.localizedDescription)")
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .padding(.top, 4)
+            }
+        }
+    }
+    
+    private func mapSessionStatusToTaskStatus(_ status: String) -> TaskStatus {
+        switch status.lowercased() {
+        case "active":
+            return .completed
+        case "completed":
+            return .completed
+        case "failed":
+            return .failed
+        default:
+            return .pending
+        }
+    }
+}
+
+// MARK: - Task List Content View
+struct TaskListContentView: View {
+    let taskManager: TaskManager
+    let onTaskSelect: (AriaTask) -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Group {
+            if taskManager.tasks.isEmpty && !taskManager.isLoadingTasks {
+                Text("No tasks available")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                    .padding(.vertical, 20)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 8) {
+                        ForEach(taskManager.tasks, id: \.id) { taskResponse in
+                            let ariaTask = convertTaskResponseToAriaTask(taskResponse)
                             TaskRow(
-                                task: convertTaskResponseToAriaTask(task),
-                                onSelect: { onTaskSelect(convertTaskResponseToAriaTask(task)) }
+                                task: ariaTask,
+                                onSelect: { onTaskSelect(ariaTask) }
                             )
                         }
                         
@@ -43,8 +373,8 @@ struct TaskListView: View {
                                 }
                             }) {
                                 Text("Load More")
-                                    .font(.textSM)
-                                    .foregroundColor(Color.appleBlue)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color.buttonText(for: colorScheme))
                             }
                             .padding(.vertical, 8)
                         }
@@ -55,27 +385,99 @@ struct TaskListView: View {
             
             if let error = taskManager.taskError {
                 Text("Error: \(error.localizedDescription)")
-                    .font(.textXS)
+                    .font(.system(size: 12))
                     .foregroundColor(.red)
                     .padding(.top, 4)
             }
         }
-        .onAppear {
-            if isInitialLoad {
-                Task {
-                    isInitialLoad = false
-                    print("TaskListView: Starting to load tasks...")
-                    do {
-                        // Now list tasks
-                        try await taskManager.listTasks(refresh: true)
-                        print("TaskListView: Listed tasks successfully")
-                    } catch {
-                        print("TaskListView: Error loading tasks: \(error)")
-                    }
-                }
-            }
+    }
+    
+    private func convertTaskResponseToAriaTask(_ taskResponse: TaskResponse) -> AriaTask {
+        let title = generateTaskTitle(from: taskResponse)
+        
+        return AriaTask(
+            id: taskResponse.id,
+            title: title,
+            detailIdentifier: taskResponse.sessionId ?? "",
+            status: mapTaskStatusLocally(taskResponse.status),
+            timestamp: taskResponse.createdAt
+        )
+    }
+    
+    private func mapTaskStatusLocally(_ status: String) -> TaskStatus {
+        switch status.lowercased() {
+        case "running":
+            return .running
+        case "pending":
+            return .pending
+        case "completed":
+            return .completed
+        case "failed":
+            return .failed
+        case "cancelled":
+            return .failed
+        case "timeout":
+            return .failed
+        default:
+            return .pending
         }
     }
+    
+    private func generateTaskTitle(from taskResponse: TaskResponse) -> String {
+        let taskType = taskResponse.type
+        let payload = taskResponse.payload
+        
+        switch taskType.lowercased() {
+        case "analysis":
+            if let args = payload?.args,
+               let dataset = args["dataset"]?.wrappedValue as? String {
+                return "Analysis: \(dataset)"
+            }
+            return "Data Analysis Task"
+            
+        case "processing":
+            if let args = payload?.args,
+               let batchSize = args["batch_size"]?.wrappedValue as? Int {
+                return "Processing: Batch size \(batchSize)"
+            }
+            return "Processing Task"
+            
+        case "shell", "command":
+            if let command = payload?.command {
+                return "Shell: \(command.prefix(30))\(command.count > 30 ? "..." : "")"
+            }
+            return "Shell Command"
+            
+        default:
+            return "\(taskType.capitalized) Task"
+        }
+    }
+}
+
+// MARK: - Container List View
+struct ContainerListView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "cube.box")
+                .font(.system(size: 48))
+                .foregroundColor(Color.textTertiary(for: colorScheme))
+            
+            VStack(spacing: 8) {
+                Text("Containers")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color.textTertiary(for: colorScheme))
+                
+                Text("Container management will be available in a future update")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.textTertiary(for: colorScheme))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.vertical, 40)
+    }
+}
     
     private func convertTaskResponseToAriaTask(_ taskResponse: TaskResponse) -> AriaTask {
         // Generate a meaningful title from task metadata
@@ -85,9 +487,28 @@ struct TaskListView: View {
             id: taskResponse.id,
             title: title,
             detailIdentifier: taskResponse.sessionId ?? "",
-            status: taskManager.mapTaskStatus(taskResponse.status),
+            status: mapTaskStatusLocally(taskResponse.status),
             timestamp: taskResponse.createdAt
         )
+    }
+    
+    private func mapTaskStatusLocally(_ status: String) -> TaskStatus {
+        switch status.lowercased() {
+        case "running":
+            return .running
+        case "pending":
+            return .pending
+        case "completed":
+            return .completed
+        case "failed":
+            return .failed
+        case "cancelled":
+            return .failed
+        case "timeout":
+            return .failed
+        default:
+            return .pending
+        }
     }
     
     private func generateTaskTitle(from taskResponse: TaskResponse) -> String {
@@ -158,7 +579,6 @@ struct TaskListView: View {
             return "\(taskType.capitalized) Task"
         }
     }
-}
 
 struct TaskRow: View {
     let task: AriaTask
@@ -256,6 +676,163 @@ struct TaskRow: View {
                 NSCursor.pop()
             }
         }
+    }
+}
+
+// MARK: - Session Row
+struct SessionRow: View {
+    let task: AriaTask
+    let onSelect: () -> Void
+    
+    @State private var isHovered = false
+    @Environment(\.colorScheme) var colorScheme
+    
+    var sessionStatusColor: Color {
+        switch task.status {
+        case .running:
+            return Color(hue: 60/360, saturation: 0.85, brightness: 0.95) // Yellow - Responding
+        case .completed, .inProgress:
+            return Color(hue: 120/360, saturation: 0.85, brightness: 0.85) // Green - Active  
+        case .failed:
+            return Color(hue: 0/360, saturation: 0.85, brightness: 0.85) // Red - Disconnected
+        case .pending, .paused:
+            return Color(hue: 120/360, saturation: 0.85, brightness: 0.85) // Green - Default to Active
+        }
+    }
+    
+    var sessionStatusText: String {
+        switch task.status {
+        case .running:
+            return "Responding"
+        case .failed:
+            return "Disconnected"
+        case .completed, .inProgress, .pending, .paused:
+            return "Active"
+        }
+    }
+    
+    var sessionTitle: String {
+        // For now, use existing title - will be enhanced in Phase 2
+        if task.title.contains("Chat Session") || task.title.contains("new chat session") {
+            return "New chat session" // Temporary fallback
+        }
+        return task.title
+    }
+    
+    var sessionMetadata: (messageCount: String, lastAccessed: String) {
+        // Mock data for now - will be enhanced in Phase 4
+        return ("3 messages", "2m ago")
+    }
+    
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .center, spacing: 16) {
+                // Left: Session Title
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sessionTitle)
+                        .font(.system(size: 14, weight: .medium, design: .default))
+                        .foregroundColor(Color.textPrimary(for: colorScheme))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(sessionTitle)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Removed: Message count metadata per user request
+                
+                // Right: Status + Chevron
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(sessionStatusColor)
+                            .frame(width: 6, height: 6)
+                        
+                        Text(sessionStatusText)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(sessionStatusColor)
+                    }
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.textSecondary(for: colorScheme))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16) // rounded-xl for more square-rounded look
+                    .fill(
+                        .regularMaterial.opacity(0.7)
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.glassmorphicBackground(for: colorScheme))
+                    )
+                    // Removed: Border stroke per user request for cleaner look
+            )
+            .shadow(
+                color: Color.black.opacity(0.05),
+                radius: 20,
+                x: 0,
+                y: 8
+            )
+            .shadow(
+                color: Color.black.opacity(0.04),
+                radius: 10,
+                x: 0,
+                y: -6
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.3), value: isHovered)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.3)) {
+                isHovered = hovering
+            }
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+}
+
+// MARK: - Metadata Badge
+struct MetadataBadge: View {
+    let text: String
+    let icon: String
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+            Text(text)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundColor(Color.textSecondary(for: colorScheme))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8) // rounded-lg per design system
+                .fill(Color.glassmorphicBackground(for: colorScheme))
+                .shadow(
+                    color: Color.white.opacity(0.1),
+                    radius: 1,
+                    x: 0,
+                    y: 1
+                )
+                .shadow(
+                    color: Color.black.opacity(0.05),
+                    radius: 1,
+                    x: 0,
+                    y: -1
+                )
+        )
     }
 }
 

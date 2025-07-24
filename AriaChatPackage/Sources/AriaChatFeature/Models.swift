@@ -116,6 +116,26 @@ struct MenuItem: Identifiable {
     }
 }
 
+// MARK: - Content Types
+public enum ContentType: String, CaseIterable {
+    case chats = "Chats"
+    case tasks = "Tasks"
+    case containers = "Containers"
+    
+    public var displayName: String {
+        return self.rawValue
+    }
+    
+    public var isImplemented: Bool {
+        switch self {
+        case .chats, .tasks:
+            return true
+        case .containers:
+            return false // Future implementation
+        }
+    }
+}
+
 // MARK: - Task
 public enum TaskStatus: String {
     case completed = "Completed"
