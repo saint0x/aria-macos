@@ -21,6 +21,12 @@ extension Color {
     static let appleGreen = Color(red: 52/255, green: 199/255, blue: 89/255).opacity(0.9)
     static let appleGreenDark = Color(red: 41/255, green: 163/255, blue: 72/255).opacity(0.9)
     
+    // Apple Reds
+    static let appleRed = Color(red: 255/255, green: 59/255, blue: 48/255).opacity(0.9)
+    
+    // Apple Oranges
+    static let appleOrange = Color(red: 255/255, green: 149/255, blue: 0/255).opacity(0.9)
+    
     // Text colors from React components
     static func textPrimary(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark 

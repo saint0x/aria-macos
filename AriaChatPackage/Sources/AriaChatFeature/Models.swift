@@ -356,3 +356,78 @@ class GlassmorphicChatbarState: ObservableObject {
         }
     }
 }
+
+// MARK: - Toast Notification Models
+
+/// Universal toast notification model for SDK/firmware messages and app notifications
+public struct ToastNotification: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    public let title: String
+    public let message: String
+    public let type: ToastNotificationType
+    public let duration: Double
+    public let timestamp: Date
+    
+    public init(
+        title: String,
+        message: String,
+        type: ToastNotificationType,
+        duration: Double = AppConfiguration.UI.notificationDisplayDuration
+    ) {
+        self.title = title
+        self.message = message
+        self.type = type
+        self.duration = duration
+        self.timestamp = Date()
+    }
+    
+    public static func == (lhs: ToastNotification, rhs: ToastNotification) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// Types of toast notifications with associated visual styling
+public enum ToastNotificationType: String, CaseIterable, Sendable {
+    case success = "success"
+    case error = "error"
+    case warning = "warning"
+    case info = "info"
+    
+    /// System icon for the notification type
+    public var systemIcon: String {
+        switch self {
+        case .success:
+            return "checkmark.circle.fill"
+        case .error:
+            return "xmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .info:
+            return "info.circle.fill"
+        }
+    }
+    
+    /// Primary color for the notification type
+    public var primaryColor: Color {
+        switch self {
+        case .success:
+            return .appleGreen
+        case .error:
+            return .appleRed
+        case .warning:
+            return .appleOrange
+        case .info:
+            return .appleBlue
+        }
+    }
+    
+    /// Background color for the notification type
+    public var backgroundColor: Color {
+        primaryColor.opacity(0.1)
+    }
+    
+    /// Border color for the notification type
+    public var borderColor: Color {
+        primaryColor.opacity(0.3)
+    }
+}

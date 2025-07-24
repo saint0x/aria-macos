@@ -23,6 +23,10 @@ public struct AppConfiguration: Sendable {
         public static let staggerDelay: Double = 0.04
         public static let maxStaggerDelay: Double = 0.8
         
+        // Notification Timings
+        public static let notificationDisplayDuration: Double = 2.5
+        public static let notificationFadeOutDuration: Double = 0.2
+        
         // Scroll Configuration
         public static let scrollDebounceInterval: TimeInterval = 0.1
         public static let autoScrollDelay: TimeInterval = 0.5

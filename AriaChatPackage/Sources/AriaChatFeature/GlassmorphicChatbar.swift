@@ -99,11 +99,32 @@ public struct GlassmorphicChatbar: View {
                     .frame(width: 2000, height: 1200) // Match canvas size
                     .zIndex(-1)
             }
+            
+            // Toast notifications positioned at top-right
+            HStack {
+                Spacer()
+                VStack {
+                    ToastContainer()
+                    Spacer()
+                }
+            }
+            .zIndex(10000) // Above all other UI elements
         }
         .onAppear {
             // Start collapsed like the React component
             state.expanded = false
             state.showAiChatFlow = false
+            
+            // Connect to notification service for SDK/firmware messages
+            Task {
+                await NotificationService.shared.connect()
+            }
+        }
+        .onDisappear {
+            // Disconnect notification service to clean up resources
+            Task {
+                await NotificationService.shared.disconnect()
+            }
         }
         .onKeyPress(.escape) {
             // ESC key handling: close dropdowns first, then detail pane, then collapse chatbar

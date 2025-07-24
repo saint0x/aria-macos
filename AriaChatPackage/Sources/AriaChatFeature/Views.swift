@@ -1444,6 +1444,117 @@ struct ToolUploadSuccessDisplay: View {
     }
 }
 
+// MARK: - Universal Toast Display
+struct UniversalToastDisplay: View {
+    let notification: ToastNotification
+    let onDismiss: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    @State private var isVisible = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: notification.type.systemIcon)
+                .foregroundColor(notification.type.primaryColor)
+                .font(.system(size: 16, weight: .medium))
+            
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                Text(notification.title)
+                    .font(.textSM)
+                    .fontWeight(.medium)
+                    .foregroundColor(Color.textPrimary(for: colorScheme))
+                
+                Text(notification.message)
+                    .font(.textXS)
+                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                    .lineLimit(2)
+            }
+            
+            Spacer()
+            
+            // Dismiss button
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .foregroundColor(Color.textSecondary(for: colorScheme))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .opacity(0.7)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(notification.type.backgroundColor)
+                .background(
+                    // Glassmorphic effect
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(notification.type.borderColor, lineWidth: 1)
+        )
+        .shadow(
+            color: notification.type.primaryColor.opacity(0.1),
+            radius: 8,
+            x: 0,
+            y: 4
+        )
+        .scaleEffect(isVisible ? 1 : 0.9)
+        .opacity(isVisible ? 1 : 0)
+        .offset(x: isVisible ? 0 : 20)
+        .onAppear {
+            withAnimation(AnimationSystem.expandIn) {
+                isVisible = true
+            }
+            
+            // Auto-dismiss after configured duration (2.5s for SDK notifications)
+            DispatchQueue.main.asyncAfter(deadline: .now() + notification.duration) {
+                dismissWithAnimation()
+            }
+        }
+    }
+    
+    private func dismissWithAnimation() {
+        withAnimation(.easeOut(duration: AppConfiguration.UI.notificationFadeOutDuration)) {
+            isVisible = false
+        }
+        
+        // Call dismiss callback after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppConfiguration.UI.notificationFadeOutDuration) {
+            onDismiss()
+        }
+    }
+}
+
+// MARK: - Toast Container
+struct ToastContainer: View {
+    @StateObject private var notificationService = NotificationService.shared
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(notificationService.activeNotifications) { notification in
+                UniversalToastDisplay(
+                    notification: notification,
+                    onDismiss: {
+                        notificationService.removeNotification(withId: notification.id)
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
+            }
+        }
+        .frame(maxWidth: 320)
+        .padding(.trailing, 16)
+        .padding(.top, 16)
+    }
+}
+
 // MARK: - Step Detail Pane
 struct StepDetailPane: View {
     let step: EnhancedStep
